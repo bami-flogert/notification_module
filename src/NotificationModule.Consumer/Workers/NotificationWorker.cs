@@ -9,6 +9,8 @@ namespace NotificationModule.Consumer.Workers;
 
 public class NotificationWorker : BackgroundService
 {
+    private const string ExchangeName = "appointment.notifications";
+
     // This worker listens to a single logical queue.
     // In a multi-channel setup each channel has its own queue (sms/whatsapp/email).
     // For simplicity this worker picks from all three, dispatching to all providers.
@@ -83,6 +85,7 @@ public class NotificationWorker : BackgroundService
             {
                 _connection = factory.CreateConnection();
                 _channel    = _connection.CreateModel();
+                DeclareTopology(_channel);
                 _channel.BasicQos(prefetchSize: 0, prefetchCount: 1, global: false);
                 _logger.LogInformation("Connected to RabbitMQ.");
                 return;
@@ -93,6 +96,14 @@ public class NotificationWorker : BackgroundService
                 await Task.Delay(3000, ct);
             }
         }
+    }
+
+    private static void DeclareTopology(IModel channel)
+    {
+        // Idempotent declarations prevent startup ordering issues between producer and consumer.
+        channel.ExchangeDeclare(ExchangeName, ExchangeType.Fanout, durable: true);
+        channel.QueueDeclare(QueueName, durable: true, exclusive: false, autoDelete: false);
+        channel.QueueBind(QueueName, ExchangeName, routingKey: string.Empty);
     }
 
     public override void Dispose()
