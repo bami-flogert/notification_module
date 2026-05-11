@@ -1,0 +1,60 @@
+
+services:
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # Management UI  →  http://localhost:15672  (guest/guest)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  comworld:
+    image: ghcr.io/avansict/in2.4-fakecomworld:main
+    container_name: comworld
+    ports:
+      - "1337:8080"     # Provider docs  →  http://localhost:1337
+
+  producer:
+    build:
+      context: .
+      dockerfile: src/NotificationModule.Producer/Dockerfile
+    container_name: notification-producer
+    ports:
+      - "5000:8080"
+    environment:
+      - RabbitMq__Host=rabbitmq
+      - RabbitMq__Port=5672
+      - RabbitMq__Username=guest
+      - RabbitMq__Password=guest
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  consumer:
+    build:
+      context: .
+      dockerfile: src/NotificationModule.Consumer/Dockerfile
+    container_name: notification-consumer
+    environment:
+      - RabbitMq__Host=rabbitmq
+      - RabbitMq__Port=5672
+      - RabbitMq__Username=guest
+      - RabbitMq__Password=guest
+      - Providers__SwiftSend__BaseUrl=http://comworld:8080
+      - Providers__SwiftSend__ApiKey=your-api-key
+      - Providers__SecurePost__BaseUrl=http://comworld:8080
+      - Providers__SecurePost__TokenUrl=/auth/token
+      - Providers__SecurePost__Username=user
+      - Providers__SecurePost__Password=pass
+      - Providers__LegacyLink__BaseUrl=http://comworld:8080
+      - Providers__LegacyLink__Username=user
+      - Providers__LegacyLink__Password=pass
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+

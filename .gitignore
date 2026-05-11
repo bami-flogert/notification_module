@@ -1,0 +1,44 @@
+# Build outputs
+**/bin/
+**/obj/
+TestResults/
+artifacts/
+
+# Visual Studio / Rider / JetBrains
+.vs/
+.idea/
+*.user
+*.userosscache
+*.suo
+*.rsuser
+*.sln.docstates
+
+# VS Code
+.vscode/
+
+# Logs and runtime files
+*.log
+logs/
+*.pid
+*.pid.lock
+
+# Local environment / overrides
+.env
+.env.*
+*.local
+docker-compose.override.yml
+
+# OS-generated files
+Thumbs.db
+Desktop.ini
+
+# NuGet / package caches
+**/packages/
+
+# Optional local test output
+coverage/
+
+# ReSharper / Rider caches
+_ReSharper*/
+*.DotSettings.user
+

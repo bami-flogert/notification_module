@@ -1,0 +1,6 @@
+@NotificationModule.Producer_HostAddress = http://localhost:5186
+
+GET {{NotificationModule.Producer_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
