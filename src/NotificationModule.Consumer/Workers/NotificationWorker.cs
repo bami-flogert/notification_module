@@ -11,12 +11,16 @@ public class NotificationWorker : BackgroundService
 {
     private const string ExchangeName = "appointment.notifications";
 
-    // This worker listens to a single logical queue.
-    // In a multi-channel setup each channel has its own queue (sms/whatsapp/email).
-    // For simplicity this worker picks from all three, dispatching to all providers.
-    // You can split into three separate workers if needed.
+    // This worker can listen to multiple logical queues (sms/whatsapp/email).
+    // In a multi-channel setup each channel has its own queue. The worker will
+    // create a consumer for each queue and dispatch messages to all providers.
 
-    private const string QueueName = "notifications.sms"; // swap or loop for all queues
+    private static readonly string[] QueueNames =
+    {
+        "notifications.sms",
+        "notifications.whatsapp",
+        "notifications.email"
+    };
 
     private readonly NotificationDispatcher _dispatcher;
     private readonly IConfiguration _config;
@@ -40,29 +44,42 @@ public class NotificationWorker : BackgroundService
         // Wait for RabbitMQ to be ready (simple retry loop)
         await WaitForRabbitMqAsync(stoppingToken);
 
-        var consumer = new AsyncEventingBasicConsumer(_channel!);
-
-        consumer.Received += async (_, ea) =>
+        // Create one consumer per queue so each logical queue can be consumed
+        // concurrently. Each consumer uses the same dispatch logic.
+        foreach (var queue in QueueNames)
         {
-            try
+            var consumer = new AsyncEventingBasicConsumer(_channel!);
+
+            consumer.Received += async (_, ea) =>
             {
-                var json    = Encoding.UTF8.GetString(ea.Body.ToArray());
-                var message = JsonSerializer.Deserialize<AppointmentMessage>(json,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                try
+                {
+                    var json    = Encoding.UTF8.GetString(ea.Body.ToArray());
+                    var message = JsonSerializer.Deserialize<AppointmentMessage>(json,
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-                if (message is not null)
-                    await _dispatcher.DispatchAsync(message, stoppingToken);
+                    if (message is not null)
+                    {
+                        // Determine which provider to invoke for this queue.
+                        var channel = queue.Contains("sms", StringComparison.OrdinalIgnoreCase) ? "SMS"
+                                    : queue.Contains("whatsapp", StringComparison.OrdinalIgnoreCase) ? "WhatsApp"
+                                    : queue.Contains("email", StringComparison.OrdinalIgnoreCase) ? "Email"
+                                    : null;
 
-                _channel!.BasicAck(ea.DeliveryTag, multiple: false);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to process message. Nacking.");
-                _channel!.BasicNack(ea.DeliveryTag, multiple: false, requeue: false);
-            }
-        };
+                        await _dispatcher.DispatchAsync(message, channel, stoppingToken);
+                    }
 
-        _channel!.BasicConsume(QueueName, autoAck: false, consumer: consumer);
+                    _channel!.BasicAck(ea.DeliveryTag, multiple: false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to process message. Nacking.");
+                    _channel!.BasicNack(ea.DeliveryTag, multiple: false, requeue: false);
+                }
+            };
+
+            _channel!.BasicConsume(queue, autoAck: false, consumer: consumer);
+        }
 
         // Keep alive until cancellation
         await Task.Delay(Timeout.Infinite, stoppingToken);
@@ -102,8 +119,13 @@ public class NotificationWorker : BackgroundService
     {
         // Idempotent declarations prevent startup ordering issues between producer and consumer.
         channel.ExchangeDeclare(ExchangeName, ExchangeType.Fanout, durable: true);
-        channel.QueueDeclare(QueueName, durable: true, exclusive: false, autoDelete: false);
-        channel.QueueBind(QueueName, ExchangeName, routingKey: string.Empty);
+
+        // Ensure all logical queues exist and are bound to the fanout exchange.
+        foreach (var queue in QueueNames)
+        {
+            channel.QueueDeclare(queue, durable: true, exclusive: false, autoDelete: false);
+            channel.QueueBind(queue, ExchangeName, routingKey: string.Empty);
+        }
     }
 
     public override void Dispose()
