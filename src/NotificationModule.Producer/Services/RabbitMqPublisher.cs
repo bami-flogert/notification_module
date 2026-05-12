@@ -13,9 +13,10 @@ public class RabbitMqPublisher : IDisposable
     private const string ExchangeName = "appointment.notifications";
     private static readonly string[] QueueNames =
     {
-        "notifications.sms",
-        "notifications.whatsapp",
-        "notifications.email"
+        "notifications.swiftsend",
+        "notifications.securepost",
+        "notifications.legacylink",
+        "notifications.asyncflow"
     };
 
     private readonly ILogger<RabbitMqPublisher> _logger;

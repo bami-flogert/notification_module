@@ -11,15 +11,16 @@ public class NotificationWorker : BackgroundService
 {
     private const string ExchangeName = "appointment.notifications";
 
-    // This worker can listen to multiple logical queues (sms/whatsapp/email).
+    // This worker can listen to multiple provider queues (SwiftSend/SecurePost/LegacyLink/AsyncFlow).
     // In a multi-channel setup each channel has its own queue. The worker will
     // create a consumer for each queue and dispatch messages to all providers.
 
     private static readonly string[] QueueNames =
     {
-        "notifications.sms",
-        "notifications.whatsapp",
-        "notifications.email"
+        "notifications.swiftsend",
+        "notifications.securepost",
+        "notifications.legacylink",
+        "notifications.asyncflow"
     };
 
     private readonly NotificationDispatcher _dispatcher;
@@ -66,11 +67,11 @@ public class NotificationWorker : BackgroundService
                     if (message is not null)
                     {
                         // Determine which FakeComWorld provider to invoke for this queue.
-                        // Queue naming is still channel-based, but provider adapters are provider-based.
                         var providerName =
-                            queue.Contains("sms", StringComparison.OrdinalIgnoreCase) ? "SwiftSend"
-                          : queue.Contains("whatsapp", StringComparison.OrdinalIgnoreCase) ? "SecurePost"
-                          : queue.Contains("email", StringComparison.OrdinalIgnoreCase) ? "LegacyLink"
+                            queue.Contains("swiftsend", StringComparison.OrdinalIgnoreCase) ? "SwiftSend"
+                          : queue.Contains("securepost", StringComparison.OrdinalIgnoreCase) ? "SecurePost"
+                          : queue.Contains("legacylink", StringComparison.OrdinalIgnoreCase) ? "LegacyLink"
+                          : queue.Contains("asyncflow", StringComparison.OrdinalIgnoreCase) ? "AsyncFlow"
                           : null;
 
                         await _dispatcher.DispatchAsync(message, providerName, stoppingToken);

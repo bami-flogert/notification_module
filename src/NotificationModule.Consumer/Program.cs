@@ -8,6 +8,7 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddSingleton<INotificationProvider, SwiftSendProvider>();
 builder.Services.AddSingleton<INotificationProvider, SecurePostProvider>();
 builder.Services.AddSingleton<INotificationProvider, LegacyLinkProvider>();
+builder.Services.AddSingleton<INotificationProvider, AsyncFlowProvider>();
 
 builder.Services.AddSingleton<NotificationDispatcher>();
 builder.Services.AddHostedService<NotificationWorker>();

@@ -56,6 +56,8 @@ services:
       - Providers__LegacyLink__BaseUrl=http://comworld:8080
       - Providers__LegacyLink__Username=legacylink-user
       - Providers__LegacyLink__Password=legacylink-password
+      - Providers__AsyncFlow__BaseUrl=http://comworld:8080
+      - Providers__AsyncFlow__ApiKey=asyncflow-api-key
     depends_on:
       rabbitmq:
         condition: service_healthy
