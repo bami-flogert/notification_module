@@ -27,7 +27,7 @@ public class NotificationWorker : BackgroundService
     private readonly ILogger<NotificationWorker> _logger;
 
     private IConnection? _connection;
-    private IModel? _channel;
+    private readonly List<IModel> _channels = new();
 
     public NotificationWorker(
         NotificationDispatcher dispatcher,
@@ -48,7 +48,12 @@ public class NotificationWorker : BackgroundService
         // concurrently. Each consumer uses the same dispatch logic.
         foreach (var queue in QueueNames)
         {
-            var consumer = new AsyncEventingBasicConsumer(_channel!);
+            // RabbitMQ .NET channels (IModel) are not thread-safe; use one channel per consumer.
+            var channel = _connection!.CreateModel();
+            channel.BasicQos(prefetchSize: 0, prefetchCount: 1, global: false);
+            _channels.Add(channel);
+
+            var consumer = new AsyncEventingBasicConsumer(channel);
 
             consumer.Received += async (_, ea) =>
             {
@@ -60,25 +65,27 @@ public class NotificationWorker : BackgroundService
 
                     if (message is not null)
                     {
-                        // Determine which provider to invoke for this queue.
-                        var channel = queue.Contains("sms", StringComparison.OrdinalIgnoreCase) ? "SMS"
-                                    : queue.Contains("whatsapp", StringComparison.OrdinalIgnoreCase) ? "WhatsApp"
-                                    : queue.Contains("email", StringComparison.OrdinalIgnoreCase) ? "Email"
-                                    : null;
+                        // Determine which FakeComWorld provider to invoke for this queue.
+                        // Queue naming is still channel-based, but provider adapters are provider-based.
+                        var providerName =
+                            queue.Contains("sms", StringComparison.OrdinalIgnoreCase) ? "SwiftSend"
+                          : queue.Contains("whatsapp", StringComparison.OrdinalIgnoreCase) ? "SecurePost"
+                          : queue.Contains("email", StringComparison.OrdinalIgnoreCase) ? "LegacyLink"
+                          : null;
 
-                        await _dispatcher.DispatchAsync(message, channel, stoppingToken);
+                        await _dispatcher.DispatchAsync(message, providerName, stoppingToken);
                     }
 
-                    _channel!.BasicAck(ea.DeliveryTag, multiple: false);
+                    channel.BasicAck(ea.DeliveryTag, multiple: false);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Failed to process message. Nacking.");
-                    _channel!.BasicNack(ea.DeliveryTag, multiple: false, requeue: false);
+                    channel.BasicNack(ea.DeliveryTag, multiple: false, requeue: false);
                 }
             };
 
-            _channel!.BasicConsume(queue, autoAck: false, consumer: consumer);
+            channel.BasicConsume(queue, autoAck: false, consumer: consumer);
         }
 
         // Keep alive until cancellation
@@ -101,9 +108,8 @@ public class NotificationWorker : BackgroundService
             try
             {
                 _connection = factory.CreateConnection();
-                _channel    = _connection.CreateModel();
-                DeclareTopology(_channel);
-                _channel.BasicQos(prefetchSize: 0, prefetchCount: 1, global: false);
+                using var topologyChannel = _connection.CreateModel();
+                DeclareTopology(topologyChannel);
                 _logger.LogInformation("Connected to RabbitMQ.");
                 return;
             }
@@ -130,7 +136,11 @@ public class NotificationWorker : BackgroundService
 
     public override void Dispose()
     {
-        _channel?.Close();
+        foreach (var ch in _channels)
+        {
+            try { ch.Close(); } catch { /* ignore */ }
+            try { ch.Dispose(); } catch { /* ignore */ }
+        }
         _connection?.Close();
         base.Dispose();
     }

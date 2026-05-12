@@ -5,9 +5,9 @@ using NotificationModule.Consumer.Workers;
 var builder = Host.CreateApplicationBuilder(args);
 
 // Register all provider adapters — add new ones here only
-builder.Services.AddSingleton<INotificationProvider, SmsProvider>();
-builder.Services.AddSingleton<INotificationProvider, WhatsAppProvider>();
-builder.Services.AddSingleton<INotificationProvider, EmailProvider>();
+builder.Services.AddSingleton<INotificationProvider, SwiftSendProvider>();
+builder.Services.AddSingleton<INotificationProvider, SecurePostProvider>();
+builder.Services.AddSingleton<INotificationProvider, LegacyLinkProvider>();
 
 builder.Services.AddSingleton<NotificationDispatcher>();
 builder.Services.AddHostedService<NotificationWorker>();

@@ -45,15 +45,17 @@ services:
       - RabbitMq__Port=5672
       - RabbitMq__Username=guest
       - RabbitMq__Password=guest
+      - Providers__StudentGroup=group-2dot4
       - Providers__SwiftSend__BaseUrl=http://comworld:8080
-      - Providers__SwiftSend__ApiKey=your-api-key
+      - Providers__SwiftSend__ApiKey=your-api-key-here
       - Providers__SecurePost__BaseUrl=http://comworld:8080
-      - Providers__SecurePost__TokenUrl=/auth/token
-      - Providers__SecurePost__Username=user
-      - Providers__SecurePost__Password=pass
+      - Providers__SecurePost__AuthEndpoint=/securepost/auth
+      - Providers__SecurePost__MessageEndpoint=/securepost/message
+      - Providers__SecurePost__ClientId=securepost-client-id
+      - Providers__SecurePost__ClientSecret=securepost-secret-key
       - Providers__LegacyLink__BaseUrl=http://comworld:8080
-      - Providers__LegacyLink__Username=user
-      - Providers__LegacyLink__Password=pass
+      - Providers__LegacyLink__Username=legacylink-user
+      - Providers__LegacyLink__Password=legacylink-password
     depends_on:
       rabbitmq:
         condition: service_healthy

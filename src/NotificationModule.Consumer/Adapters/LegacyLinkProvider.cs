@@ -1,0 +1,100 @@
+using System.Net.Http.Headers;
+using System.Text;
+using NotificationModule.Shared.Models;
+
+namespace NotificationModule.Consumer.Adapters;
+
+/// <summary>LegacyLink: XML API with HTTP Basic authentication.</summary>
+public class LegacyLinkProvider : INotificationProvider
+{
+    public string ChannelName => "LegacyLink";
+
+    private readonly HttpClient _http;
+    private readonly string _studentGroup;
+    private readonly ILogger<LegacyLinkProvider> _logger;
+
+    public LegacyLinkProvider(IConfiguration config, ILogger<LegacyLinkProvider> logger)
+    {
+        _logger = logger;
+        var baseUrl  = config["Providers:LegacyLink:BaseUrl"]!;
+        var username = config["Providers:LegacyLink:Username"]!;
+        var password = config["Providers:LegacyLink:Password"]!;
+
+        _http = new HttpClient { BaseAddress = new Uri(baseUrl) };
+        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
+        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+
+        _studentGroup = config["Providers:StudentGroup"] ?? "unknown-group";
+        _http.DefaultRequestHeaders.Add("X-STUDENT-GROUP", _studentGroup);
+        _http.DefaultRequestHeaders.Accept.ParseAdd("application/xml");
+    }
+
+    public async Task SendAsync(AppointmentMessage message, CancellationToken ct)
+    {
+        // FakeComWorld LegacyLink expects POST /LegacyLink/SendSms with an XML body (not SOAP).
+        var xmlBody = BuildLegacyLinkSendSmsXml(message);
+        var content = new StringContent(xmlBody, Encoding.UTF8, "application/xml");
+
+        using var response = await PostXmlWithRetryAsync("/LegacyLink/SendSms", xmlBody, ct);
+        response.EnsureSuccessStatusCode();
+    }
+
+    private static string BuildLegacyLinkSendSmsXml(AppointmentMessage m)
+    {
+        var text =
+            $"Appointment reminder for {m.PatientName}: {m.StartDateTime:dd MMM yyyy HH:mm} UTC — {m.Status}";
+
+        return $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <SendSmsRequest xmlns="http://legacylink.fakecomworld.com/v1">
+              <PhoneNumber>{EscapeXml(m.PatientPhone)}</PhoneNumber>
+              <MessageText>{EscapeXml(text)}</MessageText>
+              <SenderIdentification>NotificationModule</SenderIdentification>
+            </SendSmsRequest>
+            """;
+    }
+
+    private static string EscapeXml(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return string.Empty;
+        return value
+            .Replace("&", "&amp;")
+            .Replace("<", "&lt;")
+            .Replace(">", "&gt;")
+            .Replace("\"", "&quot;")
+            .Replace("'", "&apos;");
+    }
+
+    private async Task<HttpResponseMessage> PostXmlWithRetryAsync(string path, string xmlBody, CancellationToken ct)
+    {
+        const int maxAttempts = 3;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                using var content = new StringContent(xmlBody, Encoding.UTF8, "application/xml");
+                var response = await _http.PostAsync(path, content, ct);
+
+                if (response.IsSuccessStatusCode)
+                    return response;
+
+                var code = (int)response.StatusCode;
+                if (attempt == maxAttempts || (code < 500 && code != 408 && code != 429))
+                    return response;
+
+                response.Dispose();
+            }
+            catch (HttpRequestException ex) when (attempt < maxAttempts)
+            {
+                _logger.LogWarning(ex, "LegacyLink transient error (attempt {Attempt}/{Max}). Retrying…", attempt, maxAttempts);
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt), ct);
+        }
+
+        using var lastContent = new StringContent(xmlBody, Encoding.UTF8, "application/xml");
+        return await _http.PostAsync(path, lastContent, ct);
+    }
+}
+
+
