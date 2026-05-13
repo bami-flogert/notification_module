@@ -13,6 +13,23 @@ services:
       timeout: 5s
       retries: 5
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: notification-postgres
+    environment:
+      POSTGRES_USER: notification
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-notification}
+      POSTGRES_DB: notification
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notification -d notification"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   comworld:
     image: ghcr.io/avansict/in2.4-fakecomworld:main
     container_name: comworld
@@ -47,18 +64,24 @@ services:
       - RabbitMq__Password=guest
       - Providers__StudentGroup=group-2dot4
       - Providers__SwiftSend__BaseUrl=http://comworld:8080
-      - Providers__SwiftSend__ApiKey=your-api-key-here
       - Providers__SecurePost__BaseUrl=http://comworld:8080
       - Providers__SecurePost__AuthEndpoint=/securepost/auth
       - Providers__SecurePost__MessageEndpoint=/securepost/message
-      - Providers__SecurePost__ClientId=securepost-client-id
-      - Providers__SecurePost__ClientSecret=securepost-secret-key
       - Providers__LegacyLink__BaseUrl=http://comworld:8080
-      - Providers__LegacyLink__Username=legacylink-user
-      - Providers__LegacyLink__Password=legacylink-password
       - Providers__AsyncFlow__BaseUrl=http://comworld:8080
-      - Providers__AsyncFlow__ApiKey=asyncflow-api-key
+      - SecretsDb__ConnectionString=Host=postgres;Port=5432;Database=notification;Username=notification;Password=${POSTGRES_PASSWORD:-notification}
+      - Secrets__MasterKeyBase64=${SECRETS_MASTER_KEY_BASE64}
+      - SecretsSeed__SwiftSend__ApiKey=${SECRETS_SEED_SWIFTSEND_API_KEY}
+      - SecretsSeed__SecurePost__ClientId=${SECRETS_SEED_SECUREPOST_CLIENT_ID}
+      - SecretsSeed__SecurePost__ClientSecret=${SECRETS_SEED_SECUREPOST_CLIENT_SECRET}
+      - SecretsSeed__LegacyLink__Username=${SECRETS_SEED_LEGACYLINK_USERNAME}
+      - SecretsSeed__LegacyLink__Password=${SECRETS_SEED_LEGACYLINK_PASSWORD}
+      - SecretsSeed__AsyncFlow__ApiKey=${SECRETS_SEED_ASYNCFLOW_API_KEY}
     depends_on:
       rabbitmq:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
 
+volumes:
+  postgres_data:

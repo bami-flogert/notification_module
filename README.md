@@ -1,16 +1,18 @@
 # Notification Module
 
-Deze oplossing bestaat uit een producer, een consumer, een shared model en RabbitMQ als message broker.
+Deze oplossing bestaat uit een producer, een consumer, een shared model en RabbitMQ als message broker. Provider-credentials worden **versleuteld** in **PostgreSQL** bewaard (AES-256-GCM); de **master key** komt alleen uit de omgeving (niet uit code of `appsettings`).
 
 ## Opstarten
 
-Start de volledige stack met Docker Compose:
+Kopieer [`env.example`](env.example) naar `.env` en pas waarden aan, **of** gebruik `--env-file` (aanbevolen):
 
-```powershell
-docker compose up --build
+```bash
+docker compose --env-file env.example up --build
 ```
 
-Daarmee worden onder andere RabbitMQ, de producer en de consumer gestart.
+Hiermee worden o.a. RabbitMQ, PostgreSQL, FakeComWorld (`comworld`), de producer en de consumer gestart. De consumer leest `Secrets__MasterKeyBase64` en `SecretsSeed__*` uit de omgeving; bij een **lege** secrets-tabel worden die waarden één keer **versleuteld** weggeschreven naar Postgres.
+
+**Lokaal (zonder Docker):** zorg dat Postgres draait en zet `SecretsDb:ConnectionString`, `Secrets:MasterKeyBase64` en eventueel `SecretsSeed:*` (of vul de DB handmatig).
 
 ## Voorbeeldrequest
 
@@ -41,3 +43,18 @@ Verwachte response:
 }
 ```
 
+## Geheimen (PostgreSQL)
+
+| Omgevingsvariabele | Doel |
+|--------------------|------|
+| `SECRETS_MASTER_KEY_BASE64` | 32 bytes random key, Base64 → `Secrets__MasterKeyBase64` in de container |
+| `SECRETS_SEED_*` | Eénmalige seed als `provider_secrets` nog leeg is (zie `env.example`) |
+| `POSTGRES_PASSWORD` | Wachtwoord voor gebruiker `notification` (DB + connection string) |
+
+Gebruik in productie een sterke master key (`openssl rand -base64 32`) en roteer/reseed volgens jullie beveiligingsbeleid.
+
+### Snelle smoke-test (Docker aan)
+
+```bash
+./scripts/smoke-test.sh
+```

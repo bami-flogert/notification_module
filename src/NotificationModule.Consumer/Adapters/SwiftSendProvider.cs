@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using NotificationModule.Consumer.Secrets;
 using NotificationModule.Shared.Models;
 
 namespace NotificationModule.Consumer.Adapters;
@@ -11,11 +12,17 @@ public class SwiftSendProvider : INotificationProvider
     private readonly HttpClient _http;
     private readonly ILogger<SwiftSendProvider> _logger;
 
-    public SwiftSendProvider(IConfiguration config, ILogger<SwiftSendProvider> logger)
+    public SwiftSendProvider(
+        ProviderSecretsStore secrets,
+        IConfiguration config,
+        ILogger<SwiftSendProvider> logger)
     {
         _logger = logger;
-        _http   = new HttpClient { BaseAddress = new Uri(config["Providers:SwiftSend:BaseUrl"]!) };
-        _http.DefaultRequestHeaders.Add("X-API-KEY", config["Providers:SwiftSend:ApiKey"]);
+        var baseUrl = config["Providers:SwiftSend:BaseUrl"]
+            ?? throw new InvalidOperationException("Providers:SwiftSend:BaseUrl is required.");
+
+        _http = new HttpClient { BaseAddress = new Uri(baseUrl) };
+        _http.DefaultRequestHeaders.Add("X-API-KEY", secrets.SwiftSend.ApiKey);
         _http.DefaultRequestHeaders.Add(
             "X-STUDENT-GROUP",
             config["Providers:StudentGroup"] ?? "unknown-group");
@@ -23,13 +30,11 @@ public class SwiftSendProvider : INotificationProvider
 
     public async Task SendAsync(AppointmentMessage message, CancellationToken ct)
     {
-        // FakeComWorld SwiftSend expects POST /swiftsend with this schema:
-        // { type: "SMS"|"EMAIL", recipients: string[], content: string }
         var body = new
         {
-            type       = "SMS",
+            type = "SMS",
             recipients = new[] { message.PatientPhone },
-            content    = FormatSmsText(message),
+            content = FormatSmsText(message),
         };
 
         using var response = await PostJsonWithRetryAsync("/swiftsend", body, ct);
@@ -65,9 +70,6 @@ public class SwiftSendProvider : INotificationProvider
             await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt), ct);
         }
 
-        // unreachable, but keeps compiler happy
         return await _http.PostAsJsonAsync(path, body, ct);
     }
 }
-
-

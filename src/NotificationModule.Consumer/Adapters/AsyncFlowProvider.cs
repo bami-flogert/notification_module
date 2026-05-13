@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using NotificationModule.Consumer.Secrets;
 using NotificationModule.Shared.Models;
 
 namespace NotificationModule.Consumer.Adapters;
@@ -17,13 +18,19 @@ public class AsyncFlowProvider : INotificationProvider
     private readonly string _studentGroup;
     private readonly string _apiKey;
 
-    public AsyncFlowProvider(IConfiguration config, ILogger<AsyncFlowProvider> logger)
+    public AsyncFlowProvider(
+        ProviderSecretsStore secrets,
+        IConfiguration config,
+        ILogger<AsyncFlowProvider> logger)
     {
         _logger = logger;
 
-        var baseUrl = config["Providers:AsyncFlow:BaseUrl"] ?? config["Providers:AsyncFlow:BaseURL"]!;
+        var baseUrl = config["Providers:AsyncFlow:BaseUrl"]
+            ?? config["Providers:AsyncFlow:BaseURL"]
+            ?? throw new InvalidOperationException("Providers:AsyncFlow:BaseUrl is required.");
+
         _studentGroup = config["Providers:StudentGroup"] ?? "unknown-group";
-        _apiKey = config["Providers:AsyncFlow:ApiKey"] ?? "asyncflow-api-key";
+        _apiKey = secrets.AsyncFlow.ApiKey;
 
         _http = new HttpClient { BaseAddress = new Uri(baseUrl) };
         _http.DefaultRequestHeaders.Add("X-STUDENT-GROUP", _studentGroup);
@@ -35,12 +42,13 @@ public class AsyncFlowProvider : INotificationProvider
         var submitBody = new
         {
             destination = message.PatientPhone,
-            content = $"Appointment reminder for {message.PatientName}: {message.StartDateTime:dd MMM yyyy HH:mm} UTC — {message.Status}",
+            content =
+                $"Appointment reminder for {message.PatientName}: {message.StartDateTime:dd MMM yyyy HH:mm} UTC — {message.Status}",
             priority = "normal",
         };
 
         using var submitResponse = await PostJsonWithRetryAsync("/asyncflow", submitBody, ct);
-        submitResponse.EnsureSuccessStatusCode(); // should be 202
+        submitResponse.EnsureSuccessStatusCode();
 
         var submitJson = await submitResponse.Content.ReadAsStringAsync(ct);
         var trackingId = ExtractTrackingId(submitJson);
@@ -52,7 +60,6 @@ public class AsyncFlowProvider : INotificationProvider
 
     private async Task WaitForCompletionAsync(string trackingId, CancellationToken ct)
     {
-        // Keep polling short so the worker doesn't block too long in demo runs.
         var deadline = DateTimeOffset.UtcNow.AddSeconds(20);
         var delayMs = 400;
 
@@ -145,4 +152,3 @@ public class AsyncFlowProvider : INotificationProvider
         return await _http.GetAsync(path, ct);
     }
 }
-

@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text;
+using NotificationModule.Consumer.Secrets;
 using NotificationModule.Shared.Models;
 
 namespace NotificationModule.Consumer.Adapters;
@@ -13,12 +14,17 @@ public class LegacyLinkProvider : INotificationProvider
     private readonly string _studentGroup;
     private readonly ILogger<LegacyLinkProvider> _logger;
 
-    public LegacyLinkProvider(IConfiguration config, ILogger<LegacyLinkProvider> logger)
+    public LegacyLinkProvider(
+        ProviderSecretsStore secrets,
+        IConfiguration config,
+        ILogger<LegacyLinkProvider> logger)
     {
         _logger = logger;
-        var baseUrl  = config["Providers:LegacyLink:BaseUrl"]!;
-        var username = config["Providers:LegacyLink:Username"]!;
-        var password = config["Providers:LegacyLink:Password"]!;
+        var baseUrl = config["Providers:LegacyLink:BaseUrl"]
+            ?? throw new InvalidOperationException("Providers:LegacyLink:BaseUrl is required.");
+
+        var username = secrets.LegacyLink.Username;
+        var password = secrets.LegacyLink.Password;
 
         _http = new HttpClient { BaseAddress = new Uri(baseUrl) };
         var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
@@ -31,9 +37,7 @@ public class LegacyLinkProvider : INotificationProvider
 
     public async Task SendAsync(AppointmentMessage message, CancellationToken ct)
     {
-        // FakeComWorld LegacyLink expects POST /LegacyLink/SendSms with an XML body (not SOAP).
         var xmlBody = BuildLegacyLinkSendSmsXml(message);
-        var content = new StringContent(xmlBody, Encoding.UTF8, "application/xml");
 
         using var response = await PostXmlWithRetryAsync("/LegacyLink/SendSms", xmlBody, ct);
         response.EnsureSuccessStatusCode();
@@ -96,5 +100,3 @@ public class LegacyLinkProvider : INotificationProvider
         return await _http.PostAsync(path, lastContent, ct);
     }
 }
-
-

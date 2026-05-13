@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using NotificationModule.Consumer.Secrets;
 using NotificationModule.Shared.Models;
 
 namespace NotificationModule.Consumer.Adapters;
@@ -20,16 +21,23 @@ public class SecurePostProvider : INotificationProvider
     private string? _cachedToken;
     private DateTime _tokenExpiry = DateTime.MinValue;
 
-    public SecurePostProvider(IConfiguration config, ILogger<SecurePostProvider> logger)
+    public SecurePostProvider(
+        ProviderSecretsStore secrets,
+        IConfiguration config,
+        ILogger<SecurePostProvider> logger)
     {
         _logger = logger;
-        var baseUrl  = config["Providers:SecurePost:BaseUrl"]!;
-        _studentGroup   = config["Providers:StudentGroup"] ?? "unknown-group";
-        _authEndpoint   = config["Providers:SecurePost:AuthEndpoint"] ?? "/securepost/auth";
-        _messageEndpoint = config["Providers:SecurePost:MessageEndpoint"] ?? "/securepost/message";
+        var baseUrl = config["Providers:SecurePost:BaseUrl"]
+            ?? throw new InvalidOperationException("Providers:SecurePost:BaseUrl is required.");
 
-        _clientId     = config["Providers:SecurePost:ClientId"] ?? "securepost-client-id";
-        _clientSecret = config["Providers:SecurePost:ClientSecret"] ?? "securepost-secret-key";
+        _studentGroup = config["Providers:StudentGroup"] ?? "unknown-group";
+        _authEndpoint = config["Providers:SecurePost:AuthEndpoint"]
+            ?? throw new InvalidOperationException("Providers:SecurePost:AuthEndpoint is required.");
+        _messageEndpoint = config["Providers:SecurePost:MessageEndpoint"]
+            ?? throw new InvalidOperationException("Providers:SecurePost:MessageEndpoint is required.");
+
+        _clientId = secrets.SecurePost.ClientId;
+        _clientSecret = secrets.SecurePost.ClientSecret;
 
         _http = new HttpClient { BaseAddress = new Uri(baseUrl) };
         _http.DefaultRequestHeaders.Add("X-STUDENT-GROUP", _studentGroup);
@@ -42,11 +50,11 @@ public class SecurePostProvider : INotificationProvider
 
         var body = new
         {
-            format    = "SMS",
+            format = "SMS",
             recipient = message.PatientPhone,
-            body      = $"Appointment reminder for {message.PatientName}: " +
-                        $"{message.StartDateTime:dd MMM yyyy HH:mm} UTC — {message.Status}",
-            subject   = $"Appointment reminder — {message.StartDateTime:dd MMM yyyy}",
+            body = $"Appointment reminder for {message.PatientName}: " +
+                   $"{message.StartDateTime:dd MMM yyyy HH:mm} UTC — {message.Status}",
+            subject = $"Appointment reminder — {message.StartDateTime:dd MMM yyyy}",
         };
 
         using var response = await PostJsonWithRetryAsync(_messageEndpoint, body, ct);
@@ -58,21 +66,21 @@ public class SecurePostProvider : INotificationProvider
         if (_cachedToken is not null && DateTime.UtcNow < _tokenExpiry)
             return _cachedToken;
 
-        // FakeComWorld SecurePost auth expects:
-        // POST /securepost/auth { clientId, clientSecret } → { accessToken, expiresIn, ... }
-        using var response = await PostJsonWithRetryAsync(_authEndpoint,
-            new { clientId = _clientId, clientSecret = _clientSecret }, ct);
+        using var response = await PostJsonWithRetryAsync(
+            _authEndpoint,
+            new { clientId = _clientId, clientSecret = _clientSecret },
+            ct);
 
         response.EnsureSuccessStatusCode();
 
-        var json  = await response.Content.ReadAsStringAsync(ct);
-        var doc   = JsonDocument.Parse(json);
+        var json = await response.Content.ReadAsStringAsync(ct);
+        var doc = JsonDocument.Parse(json);
         _cachedToken = doc.RootElement.GetProperty("accessToken").GetString()!;
 
         var expiresInSeconds = doc.RootElement.TryGetProperty("expiresIn", out var expiresInEl)
             ? expiresInEl.GetInt32()
             : 180;
-        _tokenExpiry = DateTime.UtcNow.AddSeconds(Math.Max(0, expiresInSeconds - 10)); // refresh slightly early
+        _tokenExpiry = DateTime.UtcNow.AddSeconds(Math.Max(0, expiresInSeconds - 10));
 
         return _cachedToken;
     }
@@ -105,5 +113,3 @@ public class SecurePostProvider : INotificationProvider
         return await _http.PostAsJsonAsync(path, body, ct);
     }
 }
-
-
