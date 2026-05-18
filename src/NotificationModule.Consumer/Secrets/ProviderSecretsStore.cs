@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using NotificationModule.Shared.Persistence;
 
 namespace NotificationModule.Consumer.Secrets;
 
@@ -7,14 +8,16 @@ namespace NotificationModule.Consumer.Secrets;
 public sealed class ProviderSecretsStore
 {
     private readonly ILogger<ProviderSecretsStore> _logger;
+    private readonly IConfiguration _configuration;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
     };
 
-    public ProviderSecretsStore(ILogger<ProviderSecretsStore> logger)
+    public ProviderSecretsStore(IConfiguration configuration, ILogger<ProviderSecretsStore> logger)
     {
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -40,8 +43,13 @@ public sealed class ProviderSecretsStore
         AesGcmSecretProtector protector,
         CancellationToken cancellationToken = default)
     {
+        var organizationKey = _configuration["Organizations:Default:Key"] ?? "default";
+
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var rows = await db.ProviderSecrets.AsNoTracking().ToListAsync(cancellationToken);
+        var rows = await db.ProviderSecrets
+            .AsNoTracking()
+            .Where(x => x.Organization.Key == organizationKey)
+            .ToListAsync(cancellationToken);
 
         SwiftSendSecretPayload? swift = null;
         SecurePostSecretPayload? secure = null;
@@ -71,10 +79,10 @@ public sealed class ProviderSecretsStore
             }
         }
 
-        _swiftSend = swift ?? throw new InvalidOperationException("Missing SwiftSend row in provider_secrets.");
-        _securePost = secure ?? throw new InvalidOperationException("Missing SecurePost row in provider_secrets.");
-        _legacyLink = legacy ?? throw new InvalidOperationException("Missing LegacyLink row in provider_secrets.");
-        _asyncFlow = async ?? throw new InvalidOperationException("Missing AsyncFlow row in provider_secrets.");
+        _swiftSend = swift ?? throw new InvalidOperationException($"Missing SwiftSend row in provider_secrets for organization '{organizationKey}'.");
+        _securePost = secure ?? throw new InvalidOperationException($"Missing SecurePost row in provider_secrets for organization '{organizationKey}'.");
+        _legacyLink = legacy ?? throw new InvalidOperationException($"Missing LegacyLink row in provider_secrets for organization '{organizationKey}'.");
+        _asyncFlow = async ?? throw new InvalidOperationException($"Missing AsyncFlow row in provider_secrets for organization '{organizationKey}'.");
 
         ValidatePayload(_swiftSend, nameof(SwiftSend));
         ValidatePayload(_securePost, nameof(SecurePost));

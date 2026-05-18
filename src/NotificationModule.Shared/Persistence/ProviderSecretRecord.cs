@@ -1,8 +1,11 @@
-namespace NotificationModule.Consumer.Secrets;
+namespace NotificationModule.Shared.Persistence;
 
-/// <summary>Encrypted provider credential row (single-tenant / global config).</summary>
+/// <summary>Encrypted provider credential row scoped to a single organization.</summary>
 public sealed class ProviderSecretRecord
 {
+    public Guid OrganizationId { get; set; }
+    public OrganizationRecord Organization { get; set; } = null!;
+
     /// <summary>Stable key, e.g. SwiftSend, SecurePost.</summary>
     public string Provider { get; set; } = null!;
 

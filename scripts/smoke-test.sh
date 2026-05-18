@@ -23,16 +23,19 @@ if [[ "${code:-000}" == "000" ]]; then
 fi
 
 echo "==> POST sample appointment…"
-curl -sS -X POST "http://localhost:5001/api/appointments" \
+curl -sS -X POST "http://localhost:5001/api/appointments/default" \
   -H "Content-Type: application/json" \
   -d '{
     "appointmentUuid": "smoke-1",
+    "organizationKey": "default",
     "patientUuid": "patient-1",
     "patientName": "Smoke Test",
     "patientPhone": "+31612345678",
     "patientEmail": "smoke@example.com",
-    "startDateTime": "2026-05-12T14:30:00Z",
-    "status": "Confirmed"
+    "startDateTime": "2026-06-12T14:30:00Z",
+    "status": "Confirmed",
+    "location": "Smoke test location",
+    "instructions": "Smoke test instructions"
   }' | head -c 500
 echo
 

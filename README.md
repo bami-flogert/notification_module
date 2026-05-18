@@ -16,7 +16,7 @@ Hiermee worden o.a. RabbitMQ, PostgreSQL, FakeComWorld (`comworld`), de producer
 
 ## Voorbeeldrequest
 
-De producer exposeert `POST /api/appointments`.
+De producer exposeert `POST /api/appointments`. Deze endpoint bewaart de afspraak in PostgreSQL en maakt geplande notificatieregels aan voor later. De notificaties worden dus niet direct naar RabbitMQ gepubliceerd.
 
 Voorbeeld met `curl`:
 
@@ -25,12 +25,15 @@ curl -X POST http://localhost:5001/api/appointments \
   -H "Content-Type: application/json" \
   -d '{
     "appointmentUuid": "demo-1",
+    "organizationKey": "default",
     "patientUuid": "patient-1",
     "patientName": "Peter Jansen",
     "patientPhone": "+31612345678",
     "patientEmail": "Peter.jansen@example.com",
     "startDateTime": "2026-05-12T14:30:00Z",
-    "status": "Confirmed"
+    "status": "Confirmed",
+    "location": "Polikliniek A, kamer 12",
+    "instructions": "Neem een geldig identiteitsbewijs mee."
   }'
 ```
 
@@ -38,10 +41,14 @@ Verwachte response:
 
 ```json
 {
-  "message": "Notification queued.",
-  "appointmentUuid": "demo-1"
+  "message": "Appointment saved.",
+  "appointmentUuid": "demo-1",
+  "organizationKey": "default",
+  "pendingNotifications": 2
 }
 ```
+
+Zie [`APPOINTMENT_ENDPOINT.md`](APPOINTMENT_ENDPOINT.md) voor uitleg over organisaties, de requestopties en welke tabellen worden gevuld.
 
 ## Geheimen (PostgreSQL)
 

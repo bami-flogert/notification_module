@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using NotificationModule.Shared.Persistence;
 
 namespace NotificationModule.Consumer.Secrets;
 
@@ -10,7 +11,8 @@ public sealed class SecretsDbContextFactory : IDesignTimeDbContextFactory<Secret
     {
         var optionsBuilder = new DbContextOptionsBuilder<SecretsDbContext>();
         optionsBuilder.UseNpgsql(
-            "Host=localhost;Port=5432;Database=notification;Username=notification;Password=notification");
+            "Host=localhost;Port=5432;Database=notification;Username=notification;Password=notification",
+            npgsql => npgsql.MigrationsAssembly(typeof(NotificationDbContext).Assembly.FullName));
         return new SecretsDbContext(optionsBuilder.Options);
     }
 }

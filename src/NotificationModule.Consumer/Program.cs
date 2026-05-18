@@ -3,6 +3,7 @@ using NotificationModule.Consumer.Adapters;
 using NotificationModule.Consumer.Secrets;
 using NotificationModule.Consumer.Services;
 using NotificationModule.Consumer.Workers;
+using NotificationModule.Shared.Persistence;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -10,7 +11,9 @@ var connectionString = builder.Configuration["SecretsDb:ConnectionString"]
     ?? throw new InvalidOperationException("SecretsDb:ConnectionString is required.");
 
 builder.Services.AddDbContextFactory<SecretsDbContext>(options =>
-    options.UseNpgsql(connectionString));
+    options.UseNpgsql(
+        connectionString,
+        npgsql => npgsql.MigrationsAssembly(typeof(NotificationDbContext).Assembly.FullName)));
 
 builder.Services.AddSingleton<AesGcmSecretProtector>();
 builder.Services.AddSingleton<ProviderSecretsStore>();

@@ -48,8 +48,14 @@ services:
       - RabbitMq__Port=5672
       - RabbitMq__Username=guest
       - RabbitMq__Password=guest
+      - NotificationDb__ConnectionString=Host=postgres;Port=5432;Database=notification;Username=notification;Password=${POSTGRES_PASSWORD:-notification}
+      - Organizations__Default__Key=${DEFAULT_ORGANIZATION_KEY:-default}
+      - Organizations__Default__Name=${DEFAULT_ORGANIZATION_NAME:-Default Organization}
+      - Organizations__Default__TimeZone=${DEFAULT_ORGANIZATION_TIMEZONE:-UTC}
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
 
   consumer:
@@ -77,6 +83,9 @@ services:
       - SecretsSeed__LegacyLink__Username=${SECRETS_SEED_LEGACYLINK_USERNAME}
       - SecretsSeed__LegacyLink__Password=${SECRETS_SEED_LEGACYLINK_PASSWORD}
       - SecretsSeed__AsyncFlow__ApiKey=${SECRETS_SEED_ASYNCFLOW_API_KEY}
+      - Organizations__Default__Key=${DEFAULT_ORGANIZATION_KEY:-default}
+      - Organizations__Default__Name=${DEFAULT_ORGANIZATION_NAME:-Default Organization}
+      - Organizations__Default__TimeZone=${DEFAULT_ORGANIZATION_TIMEZONE:-UTC}
     depends_on:
       rabbitmq:
         condition: service_healthy
