@@ -136,6 +136,58 @@ partial class NotificationDbContextModelSnapshot : ModelSnapshot
             b.ToTable("organizations");
         });
 
+        modelBuilder.Entity("NotificationModule.Shared.Persistence.NotificationDeliveryRecord", b =>
+        {
+            b.Property<Guid>("Id")
+                .HasColumnType("uuid");
+
+            b.Property<Guid>("AppointmentId")
+                .HasColumnType("uuid");
+
+            b.Property<DateTimeOffset>("CreatedAt")
+                .HasColumnType("timestamp with time zone");
+
+            b.Property<string>("ErrorMessage")
+                .HasMaxLength(2000)
+                .HasColumnType("character varying(2000)");
+
+            b.Property<DateTimeOffset?>("FailedAt")
+                .HasColumnType("timestamp with time zone");
+
+            b.Property<Guid>("OrganizationId")
+                .HasColumnType("uuid");
+
+            b.Property<string>("Provider")
+                .IsRequired()
+                .HasMaxLength(64)
+                .HasColumnType("character varying(64)");
+
+            b.Property<Guid>("ScheduledNotificationId")
+                .HasColumnType("uuid");
+
+            b.Property<DateTimeOffset?>("SentAt")
+                .HasColumnType("timestamp with time zone");
+
+            b.Property<string>("Status")
+                .IsRequired()
+                .HasMaxLength(32)
+                .HasColumnType("character varying(32)");
+
+            b.Property<DateTimeOffset>("UpdatedAt")
+                .HasColumnType("timestamp with time zone");
+
+            b.HasKey("Id");
+
+            b.HasIndex("AppointmentId");
+
+            b.HasIndex("OrganizationId", "Status", "UpdatedAt");
+
+            b.HasIndex("ScheduledNotificationId", "Provider")
+                .IsUnique();
+
+            b.ToTable("notification_deliveries");
+        });
+
         modelBuilder.Entity("NotificationModule.Shared.Persistence.ProviderSecretRecord", b =>
         {
             b.Property<Guid>("OrganizationId")
@@ -225,6 +277,33 @@ partial class NotificationDbContextModelSnapshot : ModelSnapshot
             b.Navigation("Organization");
         });
 
+        modelBuilder.Entity("NotificationModule.Shared.Persistence.NotificationDeliveryRecord", b =>
+        {
+            b.HasOne("NotificationModule.Shared.Persistence.AppointmentRecord", "Appointment")
+                .WithMany("Deliveries")
+                .HasForeignKey("AppointmentId")
+                .OnDelete(DeleteBehavior.Cascade)
+                .IsRequired();
+
+            b.HasOne("NotificationModule.Shared.Persistence.OrganizationRecord", "Organization")
+                .WithMany()
+                .HasForeignKey("OrganizationId")
+                .OnDelete(DeleteBehavior.Cascade)
+                .IsRequired();
+
+            b.HasOne("NotificationModule.Shared.Persistence.ScheduledNotificationRecord", "ScheduledNotification")
+                .WithMany("Deliveries")
+                .HasForeignKey("ScheduledNotificationId")
+                .OnDelete(DeleteBehavior.Cascade)
+                .IsRequired();
+
+            b.Navigation("Appointment");
+
+            b.Navigation("Organization");
+
+            b.Navigation("ScheduledNotification");
+        });
+
         modelBuilder.Entity("NotificationModule.Shared.Persistence.ScheduledNotificationRecord", b =>
         {
             b.HasOne("NotificationModule.Shared.Persistence.AppointmentRecord", "Appointment")
@@ -246,6 +325,8 @@ partial class NotificationDbContextModelSnapshot : ModelSnapshot
 
         modelBuilder.Entity("NotificationModule.Shared.Persistence.AppointmentRecord", b =>
         {
+            b.Navigation("Deliveries");
+
             b.Navigation("ScheduledNotifications");
         });
 
@@ -254,6 +335,11 @@ partial class NotificationDbContextModelSnapshot : ModelSnapshot
             b.Navigation("Appointments");
 
             b.Navigation("ProviderSecrets");
+        });
+
+        modelBuilder.Entity("NotificationModule.Shared.Persistence.ScheduledNotificationRecord", b =>
+        {
+            b.Navigation("Deliveries");
         });
     }
 }

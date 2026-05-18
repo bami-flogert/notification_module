@@ -13,6 +13,7 @@ public class NotificationDbContext : DbContext
     public DbSet<ProviderSecretRecord> ProviderSecrets => Set<ProviderSecretRecord>();
     public DbSet<AppointmentRecord> Appointments => Set<AppointmentRecord>();
     public DbSet<ScheduledNotificationRecord> ScheduledNotifications => Set<ScheduledNotificationRecord>();
+    public DbSet<NotificationDeliveryRecord> NotificationDeliveries => Set<NotificationDeliveryRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -87,6 +88,31 @@ public class NotificationDbContext : DbContext
             e.HasOne(x => x.Appointment)
                 .WithMany(x => x.ScheduledNotifications)
                 .HasForeignKey(x => x.AppointmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<NotificationDeliveryRecord>(e =>
+        {
+            e.ToTable("notification_deliveries");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Provider).HasMaxLength(64).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(32).IsRequired();
+            e.Property(x => x.ErrorMessage).HasMaxLength(2000);
+            e.Property(x => x.CreatedAt).IsRequired();
+            e.Property(x => x.UpdatedAt).IsRequired();
+            e.HasIndex(x => new { x.OrganizationId, x.Status, x.UpdatedAt });
+            e.HasIndex(x => new { x.ScheduledNotificationId, x.Provider }).IsUnique();
+            e.HasOne(x => x.Organization)
+                .WithMany()
+                .HasForeignKey(x => x.OrganizationId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Appointment)
+                .WithMany(x => x.Deliveries)
+                .HasForeignKey(x => x.AppointmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.ScheduledNotification)
+                .WithMany(x => x.Deliveries)
+                .HasForeignKey(x => x.ScheduledNotificationId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

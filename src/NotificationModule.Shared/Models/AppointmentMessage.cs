@@ -18,5 +18,7 @@ public record AppointmentMessage
     public string OrganizationKey { get; init; } = string.Empty;
     public string Location        { get; init; } = string.Empty;
     public string Instructions    { get; init; } = string.Empty;
+    public Guid? ScheduledNotificationId { get; init; }
+    public string ReminderType    { get; init; } = string.Empty;
 }
 

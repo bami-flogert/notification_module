@@ -24,6 +24,7 @@ public class NotificationWorker : BackgroundService
     };
 
     private readonly NotificationDispatcher _dispatcher;
+    private readonly DeliveryTrackingService _deliveryTracking;
     private readonly IConfiguration _config;
     private readonly ILogger<NotificationWorker> _logger;
 
@@ -32,10 +33,12 @@ public class NotificationWorker : BackgroundService
 
     public NotificationWorker(
         NotificationDispatcher dispatcher,
+        DeliveryTrackingService deliveryTracking,
         IConfiguration config,
         ILogger<NotificationWorker> logger)
     {
         _dispatcher = dispatcher;
+        _deliveryTracking = deliveryTracking;
         _config     = config;
         _logger     = logger;
     }
@@ -74,7 +77,20 @@ public class NotificationWorker : BackgroundService
                           : queue.Contains("asyncflow", StringComparison.OrdinalIgnoreCase) ? "AsyncFlow"
                           : null;
 
-                        await _dispatcher.DispatchAsync(message, providerName, stoppingToken);
+                        if (providerName is not null)
+                        {
+                            var result = await _dispatcher.DispatchToProviderAsync(
+                                message,
+                                providerName,
+                                stoppingToken);
+
+                            await _deliveryTracking.RecordAsync(
+                                message,
+                                providerName,
+                                result.Success,
+                                result.ErrorMessage,
+                                stoppingToken);
+                        }
                     }
 
                     channel.BasicAck(ea.DeliveryTag, multiple: false);

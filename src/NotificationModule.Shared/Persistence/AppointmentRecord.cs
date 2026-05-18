@@ -21,4 +21,5 @@ public sealed class AppointmentRecord
     public DateTimeOffset UpdatedAt { get; set; }
 
     public ICollection<ScheduledNotificationRecord> ScheduledNotifications { get; set; } = new List<ScheduledNotificationRecord>();
+    public ICollection<NotificationDeliveryRecord> Deliveries { get; set; } = new List<NotificationDeliveryRecord>();
 }

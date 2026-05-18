@@ -25,6 +25,7 @@ builder.Services.AddSingleton<INotificationProvider, LegacyLinkProvider>();
 builder.Services.AddSingleton<INotificationProvider, AsyncFlowProvider>();
 
 builder.Services.AddSingleton<NotificationDispatcher>();
+builder.Services.AddSingleton<DeliveryTrackingService>();
 builder.Services.AddHostedService<NotificationWorker>();
 
 var host = builder.Build();

@@ -1,6 +1,6 @@
 # Appointment Intake Endpoint
 
-Appointments are stored in PostgreSQL first. Posting an appointment does not send notifications immediately and does not publish to RabbitMQ. The endpoint saves the appointment for an organization and creates pending reminder rows that a later scheduler can send 24 hours and 1 hour before the appointment.
+Appointments are stored in PostgreSQL first. Posting an appointment does not send notifications immediately. The endpoint saves the appointment for an organization and creates pending reminder rows. The scheduler publishes a reminder to RabbitMQ when its `ScheduledSendAt` time is due.
 
 ## Endpoint
 
@@ -52,15 +52,50 @@ The endpoint creates or updates the organization in `organizations` and stores t
 
 Appointments are unique per organization, using `(organization_id, appointment_uuid)`. This allows two OpenMRS organizations to use the same appointment UUID without sharing data.
 
-For future sending, the endpoint creates rows in `scheduled_notifications`:
+The endpoint creates rows in `scheduled_notifications`:
 
 - `24h`, scheduled 24 hours before `startDateTime`
 - `1h`, scheduled 1 hour before `startDateTime`
 
 Reminder rows are only created when their scheduled send time is still in the future. If the appointment already started, no pending notifications are created.
 
+The scheduler runs inside the producer. It periodically finds `Pending` rows where `ScheduledSendAt <= now`, publishes the appointment message to RabbitMQ, and marks the scheduled notification as `Queued`.
+
+The consumer receives the RabbitMQ message through each provider queue and writes one row per provider to `notification_deliveries`. Each row is marked `Sent` or `Failed`. When all providers succeed, the scheduled notification is marked `Sent`; if any provider fails, it is marked `Failed`.
+
 When an existing appointment is updated, old pending notifications are marked `Cancelled` and new future pending notifications are created. When the appointment status is `Cancelled` or `Canceled`, all pending notifications are cancelled.
 
 ## Provider Secrets Per Organization
 
-Provider secrets remain encrypted in `provider_secrets`, but they are now scoped by organization using `(organization_id, provider)`. The local demo seeds secrets for the default organization. Later, when scheduled notifications are published to RabbitMQ, the organization context can be included so the consumer can load the correct provider credentials for that organization.
+Provider secrets remain encrypted in `provider_secrets`, but they are now scoped by organization using `(organization_id, provider)`. The local demo seeds secrets for the default organization. The scheduler includes the organization key in the RabbitMQ message so the delivery rows can be tied back to the right organization.
+
+## Testing a Due Notification
+
+For a normal appointment far in the future, the scheduler will wait until 24 hours or 1 hour before the appointment. To test actual sending immediately, create an appointment a little more than 1 hour in the future. The `1h` reminder will be due within a few minutes.
+
+Example: if the current UTC time is `10:00`, post an appointment with `startDateTime` around `11:01`.
+
+Then watch the logs:
+
+```bash
+docker compose --env-file env.example logs -f producer consumer
+```
+
+Useful database checks:
+
+```sql
+select "AppointmentUuid", "StartDateTime", "Status"
+from appointments
+order by "CreatedAt" desc;
+
+select "ReminderType", "ScheduledSendAt", "Status"
+from scheduled_notifications
+order by "ScheduledSendAt";
+
+select d."Provider", d."Status", d."SentAt", d."FailedAt", d."ErrorMessage"
+from notification_deliveries d
+join scheduled_notifications sn on sn."Id" = d."ScheduledNotificationId"
+join appointments a on a."Id" = sn."AppointmentId"
+where a."AppointmentUuid" = 'openmrs-appointment-123'
+order by d."Provider";
+```

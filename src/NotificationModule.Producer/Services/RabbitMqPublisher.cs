@@ -73,6 +73,12 @@ public class RabbitMqPublisher : IDisposable
         }
     }
 
+    public void PublishBatch(IEnumerable<AppointmentMessage> messages)
+    {
+        foreach (var message in messages)
+            Publish(message);
+    }
+
     private void EnsureConnectedWithRetry(int delayMs = 3000)
     {
         if (_connection?.IsOpen == true && _channel?.IsOpen == true)

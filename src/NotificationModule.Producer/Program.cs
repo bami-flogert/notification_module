@@ -12,6 +12,7 @@ builder.Services.AddDbContextFactory<NotificationDbContext>(options =>
     options.UseNpgsql(connectionString));
 builder.Services.AddSingleton<RabbitMqPublisher>();
 builder.Services.AddScoped<AppointmentIngestionService>();
+builder.Services.AddHostedService<NotificationSchedulerWorker>();
 
 var app = builder.Build();
 
