@@ -5,11 +5,15 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{DFD86BD5-279C-4820-A134-1C07A84661A6}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NotificationModule.Shared", "src\NotificationModule.Shared\NotificationModule.Shared.csproj", "{C9E79CB7-9647-4A14-877F-4B4F46425164}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NotificationModule.Producer", "src\NotificationModule.Producer\NotificationModule.Producer.csproj", "{175A11B9-C4C2-4243-9553-F6B2008810FC}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NotificationModule.Consumer", "src\NotificationModule.Consumer\NotificationModule.Consumer.csproj", "{385F3F97-6DC1-4DC9-985D-F1FD75F6E975}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NotificationModule.Tests", "tests\NotificationModule.Tests\NotificationModule.Tests.csproj", "{B8C9D0E1-F2A3-4567-89AB-CDEF01234567}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -32,10 +36,15 @@ Global
 		{385F3F97-6DC1-4DC9-985D-F1FD75F6E975}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{385F3F97-6DC1-4DC9-985D-F1FD75F6E975}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{385F3F97-6DC1-4DC9-985D-F1FD75F6E975}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B8C9D0E1-F2A3-4567-89AB-CDEF01234567}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B8C9D0E1-F2A3-4567-89AB-CDEF01234567}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B8C9D0E1-F2A3-4567-89AB-CDEF01234567}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B8C9D0E1-F2A3-4567-89AB-CDEF01234567}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{C9E79CB7-9647-4A14-877F-4B4F46425164} = {DFD86BD5-279C-4820-A134-1C07A84661A6}
 		{175A11B9-C4C2-4243-9553-F6B2008810FC} = {DFD86BD5-279C-4820-A134-1C07A84661A6}
 		{385F3F97-6DC1-4DC9-985D-F1FD75F6E975} = {DFD86BD5-279C-4820-A134-1C07A84661A6}
+		{B8C9D0E1-F2A3-4567-89AB-CDEF01234567} = {A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 	EndGlobalSection
 EndGlobal

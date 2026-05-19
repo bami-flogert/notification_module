@@ -73,7 +73,7 @@ public class NotificationWorker : BackgroundService
 
                     if (message is not null)
                     {
-                        var providerName = ResolveProviderName(queue);
+                        var providerName = NotificationQueueMapping.TryGetProviderName(queue);
 
                         if (providerName is not null)
                         {
@@ -127,13 +127,6 @@ public class NotificationWorker : BackgroundService
             result.ErrorMessage,
             stoppingToken);
     }
-
-    private static string? ResolveProviderName(string queue) =>
-        queue.Contains("swiftsend", StringComparison.OrdinalIgnoreCase) ? "SwiftSend"
-        : queue.Contains("securepost", StringComparison.OrdinalIgnoreCase) ? "SecurePost"
-        : queue.Contains("legacylink", StringComparison.OrdinalIgnoreCase) ? "LegacyLink"
-        : queue.Contains("asyncflow", StringComparison.OrdinalIgnoreCase) ? "AsyncFlow"
-        : null;
 
     private async Task WaitForRabbitMqAsync(CancellationToken ct)
     {

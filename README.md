@@ -60,6 +60,14 @@ Zie [`APPOINTMENT_ENDPOINT.md`](APPOINTMENT_ENDPOINT.md) voor uitleg over organi
 
 Gebruik in productie een sterke master key (`openssl rand -base64 32`) en roteer/reseed volgens jullie beveiligingsbeleid.
 
+### Unit tests
+
+```bash
+dotnet test NotificationModule.sln
+```
+
+GitHub Actions runs the same tests and verifies that the producer and consumer Docker images build on every push and pull request to `main`/`master` (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+
 ### Snelle smoke-test (Docker aan)
 
 ```bash

@@ -54,13 +54,17 @@ public class SecurePostProvider : INotificationProvider
             subject = $"Appointment reminder — {message.StartDateTime:dd MMM yyyy}",
         };
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, _messageEndpoint)
-        {
-            Content = JsonContent.Create(body),
-        };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-
-        using var response = await PostWithRetryAsync(request, ct);
+        using var response = await PostWithRetryAsync(
+            () =>
+            {
+                var request = new HttpRequestMessage(HttpMethod.Post, _messageEndpoint)
+                {
+                    Content = JsonContent.Create(body),
+                };
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                return request;
+            },
+            ct);
         response.EnsureSuccessStatusCode();
     }
 
@@ -72,12 +76,16 @@ public class SecurePostProvider : INotificationProvider
         if (_tokenCache.TryGetValue(organizationKey, out var cached) && DateTime.UtcNow < cached.ExpiryUtc)
             return cached.Token;
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, _authEndpoint)
-        {
-            Content = JsonContent.Create(new { clientId = credentials.ClientId, clientSecret = credentials.ClientSecret }),
-        };
-
-        using var response = await PostWithRetryAsync(request, ct);
+        using var response = await PostWithRetryAsync(
+            () => new HttpRequestMessage(HttpMethod.Post, _authEndpoint)
+            {
+                Content = JsonContent.Create(new
+                {
+                    clientId = credentials.ClientId,
+                    clientSecret = credentials.ClientSecret,
+                }),
+            },
+            ct);
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(ct);
@@ -93,15 +101,17 @@ public class SecurePostProvider : INotificationProvider
         return token;
     }
 
-    private async Task<HttpResponseMessage> PostWithRetryAsync(HttpRequestMessage request, CancellationToken ct)
+    private async Task<HttpResponseMessage> PostWithRetryAsync(
+        Func<HttpRequestMessage> createRequest,
+        CancellationToken ct)
     {
         const int maxAttempts = 3;
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
             try
             {
-                using var attemptRequest = await CloneRequestAsync(request, ct);
-                var response = await _http.SendAsync(attemptRequest, ct);
+                using var request = createRequest();
+                var response = await _http.SendAsync(request, ct);
                 if (response.IsSuccessStatusCode)
                     return response;
 
@@ -119,25 +129,8 @@ public class SecurePostProvider : INotificationProvider
             await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt), ct);
         }
 
-        using var lastRequest = await CloneRequestAsync(request, ct);
+        using var lastRequest = createRequest();
         return await _http.SendAsync(lastRequest, ct);
-    }
-
-    private static async Task<HttpRequestMessage> CloneRequestAsync(HttpRequestMessage request, CancellationToken ct)
-    {
-        var clone = new HttpRequestMessage(request.Method, request.RequestUri);
-        foreach (var header in request.Headers)
-            clone.Headers.TryAddWithoutValidation(header.Key, header.Value);
-
-        if (request.Content is not null)
-        {
-            var bytes = await request.Content.ReadAsByteArrayAsync(ct);
-            clone.Content = new ByteArrayContent(bytes);
-            foreach (var header in request.Content.Headers)
-                clone.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
-        }
-
-        return clone;
     }
 
     private sealed record TokenCacheEntry(string Token, DateTime ExpiryUtc);

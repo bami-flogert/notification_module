@@ -1,0 +1,147 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using NotificationModule.Consumer.Adapters;
+using NotificationModule.Consumer.Secrets;
+using NotificationModule.Consumer.Services;
+using NotificationModule.Shared.Models;
+using NotificationModule.Shared.Persistence;
+
+namespace NotificationModule.Tests.Consumer;
+
+public sealed class DeliveryTrackingServiceTests
+{
+    private static readonly string[] AllProviders = ["AsyncFlow", "LegacyLink", "SecurePost", "SwiftSend"];
+
+    [Fact]
+    public async Task RecordAsync_marks_scheduled_notification_sent_when_all_providers_succeed()
+    {
+        var (dbFactory, scheduledNotificationId) = await SeedScheduledNotificationAsync();
+        var service = CreateService(dbFactory, AllProviders);
+        var message = CreateMessage(scheduledNotificationId);
+
+        foreach (var provider in AllProviders)
+            await service.RecordAsync(message, provider, success: true, errorMessage: null, CancellationToken.None);
+
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var scheduled = await db.ScheduledNotifications.FindAsync(scheduledNotificationId);
+
+        Assert.Equal(ScheduledNotificationStatuses.Sent, scheduled!.Status);
+        Assert.Equal(4, db.NotificationDeliveries.Count());
+    }
+
+    [Fact]
+    public async Task RecordAsync_marks_scheduled_notification_failed_when_any_provider_fails()
+    {
+        var (dbFactory, scheduledNotificationId) = await SeedScheduledNotificationAsync();
+        var service = CreateService(dbFactory, AllProviders);
+        var message = CreateMessage(scheduledNotificationId);
+
+        await service.RecordAsync(message, "SwiftSend", success: true, errorMessage: null, CancellationToken.None);
+        await service.RecordAsync(message, "SecurePost", success: false, errorMessage: "boom", CancellationToken.None);
+
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var scheduled = await db.ScheduledNotifications.FindAsync(scheduledNotificationId);
+
+        Assert.Equal(ScheduledNotificationStatuses.Failed, scheduled!.Status);
+    }
+
+    [Fact]
+    public async Task RecordAsync_leaves_status_unchanged_until_all_providers_report()
+    {
+        var (dbFactory, scheduledNotificationId) = await SeedScheduledNotificationAsync(
+            initialStatus: ScheduledNotificationStatuses.Queued);
+        var service = CreateService(dbFactory, AllProviders);
+        var message = CreateMessage(scheduledNotificationId);
+
+        await service.RecordAsync(message, "SwiftSend", success: true, errorMessage: null, CancellationToken.None);
+        await service.RecordAsync(message, "SecurePost", success: true, errorMessage: null, CancellationToken.None);
+
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var scheduled = await db.ScheduledNotifications.FindAsync(scheduledNotificationId);
+
+        Assert.Equal(ScheduledNotificationStatuses.Queued, scheduled!.Status);
+    }
+
+    private static DeliveryTrackingService CreateService(
+        IDbContextFactory<SecretsDbContext> dbFactory,
+        string[] providers)
+    {
+        var fakeProviders = providers.Select(name => new FakeProvider(name)).Cast<INotificationProvider>();
+        return new DeliveryTrackingService(
+            fakeProviders,
+            dbFactory,
+            NullLogger<DeliveryTrackingService>.Instance);
+    }
+
+    private static async Task<(IDbContextFactory<SecretsDbContext> Factory, Guid ScheduledNotificationId)> SeedScheduledNotificationAsync(
+        string initialStatus = ScheduledNotificationStatuses.Publishing)
+    {
+        var dbFactory = TestDb.CreateSecretsFactory();
+        var now = DateTimeOffset.UtcNow;
+
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var organization = new OrganizationRecord
+        {
+            Id = Guid.NewGuid(),
+            Key = "default",
+            Name = "Default",
+            TimeZone = "UTC",
+            IsEnabled = true,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        var appointment = new AppointmentRecord
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = organization.Id,
+            AppointmentUuid = "appt-1",
+            PatientUuid = "patient-1",
+            PatientName = "Test",
+            PatientPhone = "+31600000000",
+            PatientEmail = "test@example.com",
+            StartDateTime = now.AddHours(2),
+            Status = "Confirmed",
+            SourceSystem = "test",
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        var scheduledNotification = new ScheduledNotificationRecord
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = organization.Id,
+            AppointmentId = appointment.Id,
+            ReminderType = "1h",
+            ScheduledSendAt = now.AddMinutes(-1),
+            Status = initialStatus,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+
+        db.Organizations.Add(organization);
+        db.Appointments.Add(appointment);
+        db.ScheduledNotifications.Add(scheduledNotification);
+        await db.SaveChangesAsync();
+
+        return (dbFactory, scheduledNotification.Id);
+    }
+
+    private static AppointmentMessage CreateMessage(Guid scheduledNotificationId) => new()
+    {
+        AppointmentUuid = "appt-1",
+        OrganizationKey = "default",
+        PatientUuid = "patient-1",
+        PatientName = "Test",
+        PatientPhone = "+31600000000",
+        PatientEmail = "test@example.com",
+        StartDateTime = DateTime.UtcNow.AddHours(2),
+        Status = "Confirmed",
+        ScheduledNotificationId = scheduledNotificationId,
+        ReminderType = "1h",
+    };
+
+    private sealed class FakeProvider(string channelName) : INotificationProvider
+    {
+        public string ChannelName { get; } = channelName;
+
+        public Task SendAsync(AppointmentMessage message, CancellationToken ct) => Task.CompletedTask;
+    }
+}
