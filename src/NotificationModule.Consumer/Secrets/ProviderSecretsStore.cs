@@ -121,10 +121,10 @@ public sealed class ProviderSecretsStore
                 $"Missing AsyncFlow row in provider_secrets for organization '{organizationKey}'."),
         };
 
-        ValidatePayload(secrets.SwiftSend, nameof(SwiftSend));
-        ValidatePayload(secrets.SecurePost, nameof(SecurePost));
-        ValidatePayload(secrets.LegacyLink, nameof(LegacyLink));
-        ValidatePayload(secrets.AsyncFlow, nameof(AsyncFlow));
+        ValidatePayload(secrets.SwiftSend, ProviderSecretKeys.SwiftSend);
+        ValidatePayload(secrets.SecurePost, ProviderSecretKeys.SecurePost);
+        ValidatePayload(secrets.LegacyLink, ProviderSecretKeys.LegacyLink);
+        ValidatePayload(secrets.AsyncFlow, ProviderSecretKeys.AsyncFlow);
 
         return secrets;
     }

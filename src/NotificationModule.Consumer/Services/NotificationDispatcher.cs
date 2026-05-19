@@ -87,7 +87,7 @@ public class NotificationDispatcher
             string.Equals(p.ChannelName, providerName, StringComparison.OrdinalIgnoreCase));
 
         if (provider is null)
-            return NotificationDispatchResult.Failed($"Provider '{providerName}' is not registered.");
+            return NotificationDispatchResult.Failed($"Provider '{providerName}' is not registered.", providerName);
 
         try
         {
@@ -106,7 +106,7 @@ public class NotificationDispatcher
             _logger.LogError(ex, "{Channel} failed for {Uuid}",
                 provider.ChannelName, message.AppointmentUuid);
 
-            return NotificationDispatchResult.Failed(ex.Message, provider.ChannelName);
+                return NotificationDispatchResult.Failed(ex.Message, provider.ChannelName);
         }
     }
 }

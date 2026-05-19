@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using NotificationModule.Consumer.Adapters;
 using NotificationModule.Consumer.Services;
 using NotificationModule.Shared.Models;
 using RabbitMQ.Client;
@@ -25,6 +26,7 @@ public class NotificationWorker : BackgroundService
 
     private readonly NotificationDispatcher _dispatcher;
     private readonly DeliveryTrackingService _deliveryTracking;
+    private readonly INotificationProvider[] _providers;
     private readonly IConfiguration _config;
     private readonly ILogger<NotificationWorker> _logger;
 
@@ -34,13 +36,15 @@ public class NotificationWorker : BackgroundService
     public NotificationWorker(
         NotificationDispatcher dispatcher,
         DeliveryTrackingService deliveryTracking,
+        IEnumerable<INotificationProvider> providers,
         IConfiguration config,
         ILogger<NotificationWorker> logger)
     {
         _dispatcher = dispatcher;
         _deliveryTracking = deliveryTracking;
-        _config     = config;
-        _logger     = logger;
+        _providers = providers.ToArray();
+        _config = config;
+        _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -63,33 +67,24 @@ public class NotificationWorker : BackgroundService
             {
                 try
                 {
-                    var json    = Encoding.UTF8.GetString(ea.Body.ToArray());
+                    var json = Encoding.UTF8.GetString(ea.Body.ToArray());
                     var message = JsonSerializer.Deserialize<AppointmentMessage>(json,
                         new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
                     if (message is not null)
                     {
-                        // Determine which FakeComWorld provider to invoke for this queue.
-                        var providerName =
-                            queue.Contains("swiftsend", StringComparison.OrdinalIgnoreCase) ? "SwiftSend"
-                          : queue.Contains("securepost", StringComparison.OrdinalIgnoreCase) ? "SecurePost"
-                          : queue.Contains("legacylink", StringComparison.OrdinalIgnoreCase) ? "LegacyLink"
-                          : queue.Contains("asyncflow", StringComparison.OrdinalIgnoreCase) ? "AsyncFlow"
-                          : null;
+                        var providerName = ResolveProviderName(queue);
 
                         if (providerName is not null)
                         {
-                            var result = await _dispatcher.DispatchToProviderAsync(
-                                message,
-                                providerName,
-                                stoppingToken);
-
-                            await _deliveryTracking.RecordAsync(
-                                message,
-                                providerName,
-                                result.Success,
-                                result.ErrorMessage,
-                                stoppingToken);
+                            await DispatchAndTrackAsync(message, providerName, stoppingToken);
+                        }
+                        else
+                        {
+                            _logger.LogWarning(
+                                "Queue {Queue} is not mapped to a provider; fan-out to all registered providers.",
+                                queue);
+                            await DispatchToAllProvidersAsync(message, stoppingToken);
                         }
                     }
 
@@ -109,14 +104,45 @@ public class NotificationWorker : BackgroundService
         await Task.Delay(Timeout.Infinite, stoppingToken);
     }
 
+    private async Task DispatchToAllProvidersAsync(AppointmentMessage message, CancellationToken stoppingToken)
+    {
+        foreach (var provider in _providers)
+            await DispatchAndTrackAsync(message, provider.ChannelName, stoppingToken);
+    }
+
+    private async Task DispatchAndTrackAsync(
+        AppointmentMessage message,
+        string providerName,
+        CancellationToken stoppingToken)
+    {
+        var result = await _dispatcher.DispatchToProviderAsync(
+            message,
+            providerName,
+            stoppingToken);
+
+        await _deliveryTracking.RecordAsync(
+            message,
+            providerName,
+            result.Success,
+            result.ErrorMessage,
+            stoppingToken);
+    }
+
+    private static string? ResolveProviderName(string queue) =>
+        queue.Contains("swiftsend", StringComparison.OrdinalIgnoreCase) ? "SwiftSend"
+        : queue.Contains("securepost", StringComparison.OrdinalIgnoreCase) ? "SecurePost"
+        : queue.Contains("legacylink", StringComparison.OrdinalIgnoreCase) ? "LegacyLink"
+        : queue.Contains("asyncflow", StringComparison.OrdinalIgnoreCase) ? "AsyncFlow"
+        : null;
+
     private async Task WaitForRabbitMqAsync(CancellationToken ct)
     {
         var factory = new ConnectionFactory
         {
-            HostName          = _config["RabbitMq:Host"] ?? "localhost",
-            Port              = int.Parse(_config["RabbitMq:Port"] ?? "5672"),
-            UserName          = _config["RabbitMq:Username"] ?? "guest",
-            Password          = _config["RabbitMq:Password"] ?? "guest",
+            HostName = _config["RabbitMq:Host"] ?? "localhost",
+            Port = int.Parse(_config["RabbitMq:Port"] ?? "5672"),
+            UserName = _config["RabbitMq:Username"] ?? "guest",
+            Password = _config["RabbitMq:Password"] ?? "guest",
             DispatchConsumersAsync = true,
         };
 
@@ -162,4 +188,3 @@ public class NotificationWorker : BackgroundService
         base.Dispose();
     }
 }
-

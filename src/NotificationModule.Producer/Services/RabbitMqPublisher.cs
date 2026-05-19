@@ -56,27 +56,35 @@ public class RabbitMqPublisher : IDisposable
         lock (_sync)
         {
             EnsureConnectedWithRetry();
-
-            var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message));
-
-            var props = _channel!.CreateBasicProperties();
-            props.Persistent   = true;           // survive broker restart
-            props.ContentType  = "application/json";
-            props.MessageId    = Guid.NewGuid().ToString();
-            props.Timestamp    = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-
-            _channel.BasicPublish(
-                exchange:   ExchangeName,
-                routingKey: string.Empty,
-                basicProperties: props,
-                body:       body);
+            PublishOnOpenChannel(message);
         }
     }
 
     public void PublishBatch(IEnumerable<AppointmentMessage> messages)
     {
-        foreach (var message in messages)
-            Publish(message);
+        lock (_sync)
+        {
+            EnsureConnectedWithRetry();
+            foreach (var message in messages)
+                PublishOnOpenChannel(message);
+        }
+    }
+
+    private void PublishOnOpenChannel(AppointmentMessage message)
+    {
+        var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message));
+
+        var props = _channel!.CreateBasicProperties();
+        props.Persistent = true;
+        props.ContentType = "application/json";
+        props.MessageId = Guid.NewGuid().ToString();
+        props.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+
+        _channel.BasicPublish(
+            exchange: ExchangeName,
+            routingKey: string.Empty,
+            basicProperties: props,
+            body: body);
     }
 
     private void EnsureConnectedWithRetry(int delayMs = 3000)

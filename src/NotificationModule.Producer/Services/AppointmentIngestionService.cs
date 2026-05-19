@@ -196,7 +196,7 @@ public sealed class AppointmentIngestionService
         return new DateTimeOffset(utc);
     }
 
-    private static string? EmptyToNull(string value) =>
+    private static string? EmptyToNull(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private sealed record ReminderDefinition(string ReminderType, TimeSpan OffsetBeforeAppointment);

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using NotificationModule.Consumer.Adapters;
 using NotificationModule.Consumer.Secrets;
 using NotificationModule.Shared.Models;
 using NotificationModule.Shared.Persistence;
@@ -7,21 +8,20 @@ namespace NotificationModule.Consumer.Services;
 
 public sealed class DeliveryTrackingService
 {
-    private static readonly string[] ProviderNames =
-    [
-        "SwiftSend",
-        "SecurePost",
-        "LegacyLink",
-        "AsyncFlow",
-    ];
-
+    private readonly string[] _expectedProviders;
     private readonly IDbContextFactory<SecretsDbContext> _dbFactory;
     private readonly ILogger<DeliveryTrackingService> _logger;
 
     public DeliveryTrackingService(
+        IEnumerable<INotificationProvider> providers,
         IDbContextFactory<SecretsDbContext> dbFactory,
         ILogger<DeliveryTrackingService> logger)
     {
+        _expectedProviders = providers
+            .Select(p => p.ChannelName)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
         _dbFactory = dbFactory;
         _logger = logger;
     }
@@ -80,26 +80,32 @@ public sealed class DeliveryTrackingService
         await UpdateScheduledNotificationStatusAsync(db, scheduledNotification.Id, now, cancellationToken);
     }
 
-    private static async Task UpdateScheduledNotificationStatusAsync(
+    private async Task UpdateScheduledNotificationStatusAsync(
         SecretsDbContext db,
         Guid scheduledNotificationId,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        var statuses = await db.NotificationDeliveries
+        var deliveries = await db.NotificationDeliveries
             .Where(x => x.ScheduledNotificationId == scheduledNotificationId)
-            .Select(x => x.Status)
             .ToListAsync(cancellationToken);
+
+        var deliveryByProvider = deliveries.ToDictionary(
+            x => x.Provider,
+            x => x.Status,
+            StringComparer.OrdinalIgnoreCase);
 
         var scheduledNotification = await db.ScheduledNotifications
             .SingleAsync(x => x.Id == scheduledNotificationId, cancellationToken);
 
-        if (statuses.Count >= ProviderNames.Length && statuses.All(x => x == "Sent"))
+        if (_expectedProviders.All(p =>
+                deliveryByProvider.TryGetValue(p, out var status)
+                && string.Equals(status, "Sent", StringComparison.OrdinalIgnoreCase)))
         {
             scheduledNotification.Status = ScheduledNotificationStatuses.Sent;
             scheduledNotification.UpdatedAt = now;
         }
-        else if (statuses.Any(x => x == "Failed"))
+        else if (deliveries.Any(x => string.Equals(x.Status, "Failed", StringComparison.OrdinalIgnoreCase)))
         {
             scheduledNotification.Status = ScheduledNotificationStatuses.Failed;
             scheduledNotification.UpdatedAt = now;

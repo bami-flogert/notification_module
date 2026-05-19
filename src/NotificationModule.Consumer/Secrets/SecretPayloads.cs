@@ -8,6 +8,14 @@ public static class ProviderSecretKeys
     public const string SecurePost = "SecurePost";
     public const string LegacyLink = "LegacyLink";
     public const string AsyncFlow = "AsyncFlow";
+
+    public static IReadOnlyList<string> All { get; } =
+    [
+        SwiftSend,
+        SecurePost,
+        LegacyLink,
+        AsyncFlow,
+    ];
 }
 
 public sealed class SwiftSendSecretPayload

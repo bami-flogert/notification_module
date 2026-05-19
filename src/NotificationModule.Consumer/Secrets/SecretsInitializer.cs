@@ -38,15 +38,144 @@ public sealed class SecretsInitializer
         await db.Database.MigrateAsync(cancellationToken);
 
         var organization = await EnsureDefaultOrganizationAsync(db, cancellationToken);
-        var count = await db.ProviderSecrets
-            .CountAsync(x => x.OrganizationId == organization.Id, cancellationToken);
-        if (count == 0)
-        {
-            _logger.LogInformation("No provider secrets in database; attempting one-time seed from SecretsSeed configuration.");
-            await SeedFromConfigurationAsync(db, organization, cancellationToken);
-        }
+        await EnsureProviderSecretsAsync(db, organization, cancellationToken);
 
         await _secretsStore.ReloadAsync(cancellationToken);
+    }
+
+    private async Task EnsureProviderSecretsAsync(
+        SecretsDbContext db,
+        OrganizationRecord organization,
+        CancellationToken cancellationToken)
+    {
+        var existing = await db.ProviderSecrets
+            .Where(x => x.OrganizationId == organization.Id)
+            .Select(x => x.Provider)
+            .ToListAsync(cancellationToken);
+
+        var missing = ProviderSecretKeys.All
+            .Except(existing, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (missing.Count == 0)
+            return;
+
+        _logger.LogInformation(
+            "Organization '{OrganizationKey}' is missing provider secrets for: {Providers}. Attempting seed from configuration.",
+            organization.Key,
+            string.Join(", ", missing));
+
+        var seeded = SeedMissingFromConfiguration(db, organization.Id, missing, DateTimeOffset.UtcNow);
+        if (seeded.Count > 0)
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            _logger.LogInformation(
+                "Seeded encrypted provider secrets for organization '{OrganizationKey}': {Providers}",
+                organization.Key,
+                string.Join(", ", seeded));
+        }
+
+        var stillMissing = ProviderSecretKeys.All
+            .Except(
+                existing.Concat(seeded),
+                StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (stillMissing.Count == 0)
+            return;
+
+        throw new InvalidOperationException(
+            $"Organization '{organization.Key}' is missing provider secrets for: {string.Join(", ", stillMissing)}. " +
+            "Configure SecretsSeed:* values (e.g. env SecretsSeed__SwiftSend__ApiKey) for a one-time encrypted seed, " +
+            "or insert the missing rows manually.");
+    }
+
+    private List<string> SeedMissingFromConfiguration(
+        SecretsDbContext db,
+        Guid organizationId,
+        IReadOnlyList<string> missingProviders,
+        DateTimeOffset now)
+    {
+        var seeded = new List<string>();
+
+        foreach (var provider in missingProviders)
+        {
+            if (!TryCreateSecretPayload(provider, out var payload))
+                continue;
+
+            AddSecretRow(db, organizationId, provider, payload, now);
+            seeded.Add(provider);
+        }
+
+        return seeded;
+    }
+
+    private bool TryCreateSecretPayload(string provider, out byte[] plaintextJson)
+    {
+        switch (provider)
+        {
+            case ProviderSecretKeys.SwiftSend:
+            {
+                var apiKey = _configuration["SecretsSeed:SwiftSend:ApiKey"];
+                if (string.IsNullOrWhiteSpace(apiKey))
+                {
+                    plaintextJson = [];
+                    return false;
+                }
+
+                plaintextJson = JsonSerializer.SerializeToUtf8Bytes(
+                    new SwiftSendSecretPayload { ApiKey = apiKey },
+                    JsonOptions);
+                return true;
+            }
+            case ProviderSecretKeys.SecurePost:
+            {
+                var clientId = _configuration["SecretsSeed:SecurePost:ClientId"];
+                var clientSecret = _configuration["SecretsSeed:SecurePost:ClientSecret"];
+                if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+                {
+                    plaintextJson = [];
+                    return false;
+                }
+
+                plaintextJson = JsonSerializer.SerializeToUtf8Bytes(
+                    new SecurePostSecretPayload { ClientId = clientId, ClientSecret = clientSecret },
+                    JsonOptions);
+                return true;
+            }
+            case ProviderSecretKeys.LegacyLink:
+            {
+                var username = _configuration["SecretsSeed:LegacyLink:Username"];
+                var password = _configuration["SecretsSeed:LegacyLink:Password"];
+                if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+                {
+                    plaintextJson = [];
+                    return false;
+                }
+
+                plaintextJson = JsonSerializer.SerializeToUtf8Bytes(
+                    new LegacyLinkSecretPayload { Username = username, Password = password },
+                    JsonOptions);
+                return true;
+            }
+            case ProviderSecretKeys.AsyncFlow:
+            {
+                var apiKey = _configuration["SecretsSeed:AsyncFlow:ApiKey"];
+                if (string.IsNullOrWhiteSpace(apiKey))
+                {
+                    plaintextJson = [];
+                    return false;
+                }
+
+                plaintextJson = JsonSerializer.SerializeToUtf8Bytes(
+                    new AsyncFlowSecretPayload { ApiKey = apiKey },
+                    JsonOptions);
+                return true;
+            }
+            default:
+                plaintextJson = [];
+                return false;
+        }
     }
 
     private async Task<OrganizationRecord> EnsureDefaultOrganizationAsync(
@@ -88,41 +217,6 @@ public sealed class SecretsInitializer
         db.Organizations.Add(organization);
         await db.SaveChangesAsync(cancellationToken);
         return organization;
-    }
-
-    private async Task SeedFromConfigurationAsync(
-        SecretsDbContext db,
-        OrganizationRecord organization,
-        CancellationToken cancellationToken)
-    {
-        var swiftApiKey = _configuration["SecretsSeed:SwiftSend:ApiKey"];
-        var secureClientId = _configuration["SecretsSeed:SecurePost:ClientId"];
-        var secureClientSecret = _configuration["SecretsSeed:SecurePost:ClientSecret"];
-        var legacyUser = _configuration["SecretsSeed:LegacyLink:Username"];
-        var legacyPass = _configuration["SecretsSeed:LegacyLink:Password"];
-        var asyncKey = _configuration["SecretsSeed:AsyncFlow:ApiKey"];
-
-        if (string.IsNullOrWhiteSpace(swiftApiKey)
-            || string.IsNullOrWhiteSpace(secureClientId)
-            || string.IsNullOrWhiteSpace(secureClientSecret)
-            || string.IsNullOrWhiteSpace(legacyUser)
-            || string.IsNullOrWhiteSpace(legacyPass)
-            || string.IsNullOrWhiteSpace(asyncKey))
-        {
-            throw new InvalidOperationException(
-                "Database has no provider secrets. Configure SecretsSeed:* (e.g. env SecretsSeed__SwiftSend__ApiKey) " +
-                "for a one-time encrypted seed, or insert rows manually.");
-        }
-
-        var now = DateTimeOffset.UtcNow;
-
-        AddSecretRow(db, organization.Id, ProviderSecretKeys.SwiftSend, JsonSerializer.SerializeToUtf8Bytes(new SwiftSendSecretPayload { ApiKey = swiftApiKey }, JsonOptions), now);
-        AddSecretRow(db, organization.Id, ProviderSecretKeys.SecurePost, JsonSerializer.SerializeToUtf8Bytes(new SecurePostSecretPayload { ClientId = secureClientId, ClientSecret = secureClientSecret }, JsonOptions), now);
-        AddSecretRow(db, organization.Id, ProviderSecretKeys.LegacyLink, JsonSerializer.SerializeToUtf8Bytes(new LegacyLinkSecretPayload { Username = legacyUser, Password = legacyPass }, JsonOptions), now);
-        AddSecretRow(db, organization.Id, ProviderSecretKeys.AsyncFlow, JsonSerializer.SerializeToUtf8Bytes(new AsyncFlowSecretPayload { ApiKey = asyncKey }, JsonOptions), now);
-
-        await db.SaveChangesAsync(cancellationToken);
-        _logger.LogInformation("Seeded encrypted provider secrets (values not logged).");
     }
 
     private void AddSecretRow(SecretsDbContext db, Guid organizationId, string provider, byte[] plaintextJson, DateTimeOffset now)
