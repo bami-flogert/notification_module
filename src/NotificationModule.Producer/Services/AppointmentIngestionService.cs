@@ -7,8 +7,8 @@ namespace NotificationModule.Producer.Services;
 
 public sealed class AppointmentIngestionService
 {
-    private const string PendingStatus = "Pending";
-    private const string CancelledStatus = "Cancelled";
+    private const string PendingStatus = ScheduledNotificationStatuses.Pending;
+    private const string CancelledStatus = ScheduledNotificationStatuses.Cancelled;
 
     private static readonly ReminderDefinition[] ReminderDefinitions =
     [

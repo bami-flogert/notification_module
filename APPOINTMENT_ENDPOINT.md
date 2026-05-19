@@ -59,7 +59,7 @@ The endpoint creates rows in `scheduled_notifications`:
 
 Reminder rows are only created when their scheduled send time is still in the future. If the appointment already started, no pending notifications are created.
 
-The scheduler runs inside the producer. It periodically finds `Pending` rows where `ScheduledSendAt <= now`, publishes the appointment message to RabbitMQ, and marks the scheduled notification as `Queued`.
+The scheduler runs inside the producer. It atomically claims `Pending` rows where `ScheduledSendAt <= now` (PostgreSQL `FOR UPDATE SKIP LOCKED`), publishes each message to RabbitMQ, and only then marks the row as `Queued`. Failed publishes revert the row to `Pending` for retry.
 
 The consumer receives the RabbitMQ message through each provider queue and writes one row per provider to `notification_deliveries`. Each row is marked `Sent` or `Failed`. When all providers succeed, the scheduled notification is marked `Sent`; if any provider fails, it is marked `Failed`.
 

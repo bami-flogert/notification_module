@@ -6,8 +6,7 @@ namespace NotificationModule.Producer.Services;
 
 public sealed class NotificationSchedulerWorker : BackgroundService
 {
-    private const string PendingStatus = "Pending";
-    private const string QueuedStatus = "Queued";
+    private static readonly TimeSpan StalePublishingThreshold = TimeSpan.FromMinutes(5);
 
     private readonly IDbContextFactory<NotificationDbContext> _dbFactory;
     private readonly RabbitMqPublisher _publisher;
@@ -58,22 +57,24 @@ public sealed class NotificationSchedulerWorker : BackgroundService
         var batchSize = Math.Clamp(_configuration.GetValue("Scheduler:BatchSize", 25), 1, 100);
 
         await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
+        await RequeueStalePublishingNotificationsAsync(db, now, cancellationToken);
+
+        var claimedIds = await ClaimDueNotificationIdsAsync(db, now, batchSize, cancellationToken);
+        if (claimedIds.Count == 0)
+            return 0;
+
         var dueNotifications = await db.ScheduledNotifications
             .Include(x => x.Appointment)
             .Include(x => x.Organization)
-            .Where(x => x.Status == PendingStatus && x.ScheduledSendAt <= now)
+            .Where(x => claimedIds.Contains(x.Id))
             .OrderBy(x => x.ScheduledSendAt)
-            .Take(batchSize)
             .ToListAsync(cancellationToken);
 
-        if (dueNotifications.Count == 0)
-            return 0;
-
-        var messages = new List<AppointmentMessage>(dueNotifications.Count);
+        var publishedCount = 0;
         foreach (var scheduledNotification in dueNotifications)
         {
             var appointment = scheduledNotification.Appointment;
-            messages.Add(new AppointmentMessage
+            var message = new AppointmentMessage
             {
                 AppointmentUuid = appointment.AppointmentUuid,
                 PatientUuid = appointment.PatientUuid,
@@ -87,14 +88,70 @@ public sealed class NotificationSchedulerWorker : BackgroundService
                 Instructions = appointment.Instructions ?? string.Empty,
                 ScheduledNotificationId = scheduledNotification.Id,
                 ReminderType = scheduledNotification.ReminderType,
-            });
+            };
 
-            scheduledNotification.Status = QueuedStatus;
-            scheduledNotification.UpdatedAt = now;
+            try
+            {
+                _publisher.Publish(message);
+                scheduledNotification.Status = ScheduledNotificationStatuses.Queued;
+                scheduledNotification.UpdatedAt = now;
+                publishedCount++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Failed to publish scheduled notification {ScheduledNotificationId}; reverting to Pending.",
+                    scheduledNotification.Id);
+
+                scheduledNotification.Status = ScheduledNotificationStatuses.Pending;
+                scheduledNotification.UpdatedAt = now;
+            }
         }
 
         await db.SaveChangesAsync(cancellationToken);
-        _publisher.PublishBatch(messages);
-        return messages.Count;
+        return publishedCount;
+    }
+
+    private static async Task RequeueStalePublishingNotificationsAsync(
+        NotificationDbContext db,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var staleBefore = now - StalePublishingThreshold;
+        await db.ScheduledNotifications
+            .Where(x =>
+                x.Status == ScheduledNotificationStatuses.Publishing
+                && x.UpdatedAt < staleBefore)
+            .ExecuteUpdateAsync(
+                setters => setters
+                    .SetProperty(x => x.Status, ScheduledNotificationStatuses.Pending)
+                    .SetProperty(x => x.UpdatedAt, now),
+                cancellationToken);
+    }
+
+    private static async Task<List<Guid>> ClaimDueNotificationIdsAsync(
+        NotificationDbContext db,
+        DateTimeOffset now,
+        int batchSize,
+        CancellationToken cancellationToken)
+    {
+        return await db.Database.SqlQuery<Guid>($"""
+            UPDATE scheduled_notifications AS sn
+            SET "Status" = {ScheduledNotificationStatuses.Publishing},
+                "UpdatedAt" = {now}
+            FROM (
+                SELECT "Id"
+                FROM scheduled_notifications
+                WHERE "Status" = {ScheduledNotificationStatuses.Pending}
+                  AND "ScheduledSendAt" <= {now}
+                ORDER BY "ScheduledSendAt"
+                LIMIT {batchSize}
+                FOR UPDATE SKIP LOCKED
+            ) AS pick
+            WHERE sn."Id" = pick."Id"
+            RETURNING sn."Id"
+            """)
+            .ToListAsync(cancellationToken);
     }
 }

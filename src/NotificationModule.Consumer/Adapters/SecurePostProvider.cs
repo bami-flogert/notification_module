@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -12,20 +13,19 @@ public class SecurePostProvider : INotificationProvider
     public string ChannelName => "SecurePost";
 
     private readonly HttpClient _http;
+    private readonly ProviderSecretsStore _secrets;
     private readonly string _studentGroup;
     private readonly string _authEndpoint;
     private readonly string _messageEndpoint;
-    private readonly string _clientId;
-    private readonly string _clientSecret;
     private readonly ILogger<SecurePostProvider> _logger;
-    private string? _cachedToken;
-    private DateTime _tokenExpiry = DateTime.MinValue;
+    private readonly ConcurrentDictionary<string, TokenCacheEntry> _tokenCache = new(StringComparer.OrdinalIgnoreCase);
 
     public SecurePostProvider(
         ProviderSecretsStore secrets,
         IConfiguration config,
         ILogger<SecurePostProvider> logger)
     {
+        _secrets = secrets;
         _logger = logger;
         var baseUrl = config["Providers:SecurePost:BaseUrl"]
             ?? throw new InvalidOperationException("Providers:SecurePost:BaseUrl is required.");
@@ -36,17 +36,14 @@ public class SecurePostProvider : INotificationProvider
         _messageEndpoint = config["Providers:SecurePost:MessageEndpoint"]
             ?? throw new InvalidOperationException("Providers:SecurePost:MessageEndpoint is required.");
 
-        _clientId = secrets.SecurePost.ClientId;
-        _clientSecret = secrets.SecurePost.ClientSecret;
-
         _http = new HttpClient { BaseAddress = new Uri(baseUrl) };
         _http.DefaultRequestHeaders.Add("X-STUDENT-GROUP", _studentGroup);
     }
 
     public async Task SendAsync(AppointmentMessage message, CancellationToken ct)
     {
-        var token = await GetTokenAsync(ct);
-        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var orgSecrets = await _secrets.GetForOrganizationAsync(message.OrganizationKey, ct);
+        var token = await GetTokenAsync(message.OrganizationKey, orgSecrets.SecurePost, ct);
 
         var body = new
         {
@@ -57,42 +54,54 @@ public class SecurePostProvider : INotificationProvider
             subject = $"Appointment reminder — {message.StartDateTime:dd MMM yyyy}",
         };
 
-        using var response = await PostJsonWithRetryAsync(_messageEndpoint, body, ct);
+        using var request = new HttpRequestMessage(HttpMethod.Post, _messageEndpoint)
+        {
+            Content = JsonContent.Create(body),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        using var response = await PostWithRetryAsync(request, ct);
         response.EnsureSuccessStatusCode();
     }
 
-    private async Task<string> GetTokenAsync(CancellationToken ct)
+    private async Task<string> GetTokenAsync(
+        string organizationKey,
+        SecurePostSecretPayload credentials,
+        CancellationToken ct)
     {
-        if (_cachedToken is not null && DateTime.UtcNow < _tokenExpiry)
-            return _cachedToken;
+        if (_tokenCache.TryGetValue(organizationKey, out var cached) && DateTime.UtcNow < cached.ExpiryUtc)
+            return cached.Token;
 
-        using var response = await PostJsonWithRetryAsync(
-            _authEndpoint,
-            new { clientId = _clientId, clientSecret = _clientSecret },
-            ct);
+        using var request = new HttpRequestMessage(HttpMethod.Post, _authEndpoint)
+        {
+            Content = JsonContent.Create(new { clientId = credentials.ClientId, clientSecret = credentials.ClientSecret }),
+        };
 
+        using var response = await PostWithRetryAsync(request, ct);
         response.EnsureSuccessStatusCode();
 
         var json = await response.Content.ReadAsStringAsync(ct);
         var doc = JsonDocument.Parse(json);
-        _cachedToken = doc.RootElement.GetProperty("accessToken").GetString()!;
+        var token = doc.RootElement.GetProperty("accessToken").GetString()!;
 
         var expiresInSeconds = doc.RootElement.TryGetProperty("expiresIn", out var expiresInEl)
             ? expiresInEl.GetInt32()
             : 180;
-        _tokenExpiry = DateTime.UtcNow.AddSeconds(Math.Max(0, expiresInSeconds - 10));
+        var expiryUtc = DateTime.UtcNow.AddSeconds(Math.Max(0, expiresInSeconds - 10));
 
-        return _cachedToken;
+        _tokenCache[organizationKey] = new TokenCacheEntry(token, expiryUtc);
+        return token;
     }
 
-    private async Task<HttpResponseMessage> PostJsonWithRetryAsync(string path, object body, CancellationToken ct)
+    private async Task<HttpResponseMessage> PostWithRetryAsync(HttpRequestMessage request, CancellationToken ct)
     {
         const int maxAttempts = 3;
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
             try
             {
-                var response = await _http.PostAsJsonAsync(path, body, ct);
+                using var attemptRequest = await CloneRequestAsync(request, ct);
+                var response = await _http.SendAsync(attemptRequest, ct);
                 if (response.IsSuccessStatusCode)
                     return response;
 
@@ -110,6 +119,26 @@ public class SecurePostProvider : INotificationProvider
             await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt), ct);
         }
 
-        return await _http.PostAsJsonAsync(path, body, ct);
+        using var lastRequest = await CloneRequestAsync(request, ct);
+        return await _http.SendAsync(lastRequest, ct);
     }
+
+    private static async Task<HttpRequestMessage> CloneRequestAsync(HttpRequestMessage request, CancellationToken ct)
+    {
+        var clone = new HttpRequestMessage(request.Method, request.RequestUri);
+        foreach (var header in request.Headers)
+            clone.Headers.TryAddWithoutValidation(header.Key, header.Value);
+
+        if (request.Content is not null)
+        {
+            var bytes = await request.Content.ReadAsByteArrayAsync(ct);
+            clone.Content = new ByteArrayContent(bytes);
+            foreach (var header in request.Content.Headers)
+                clone.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        }
+
+        return clone;
+    }
+
+    private sealed record TokenCacheEntry(string Token, DateTime ExpiryUtc);
 }

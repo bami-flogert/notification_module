@@ -46,7 +46,7 @@ public sealed class SecretsInitializer
             await SeedFromConfigurationAsync(db, organization, cancellationToken);
         }
 
-        await _secretsStore.ReloadAsync(_dbFactory, _protector, cancellationToken);
+        await _secretsStore.ReloadAsync(cancellationToken);
     }
 
     private async Task<OrganizationRecord> EnsureDefaultOrganizationAsync(

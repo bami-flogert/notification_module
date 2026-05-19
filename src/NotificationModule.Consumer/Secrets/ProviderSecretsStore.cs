@@ -1,51 +1,81 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using NotificationModule.Shared.Persistence;
 
 namespace NotificationModule.Consumer.Secrets;
 
-/// <summary>In-memory decrypted provider secrets loaded from Postgres.</summary>
+/// <summary>Per-organization decrypted provider secrets loaded from Postgres on demand.</summary>
 public sealed class ProviderSecretsStore
 {
-    private readonly ILogger<ProviderSecretsStore> _logger;
-    private readonly IConfiguration _configuration;
-
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
     };
 
-    public ProviderSecretsStore(IConfiguration configuration, ILogger<ProviderSecretsStore> logger)
+    private readonly IDbContextFactory<SecretsDbContext> _dbFactory;
+    private readonly AesGcmSecretProtector _protector;
+    private readonly IConfiguration _configuration;
+    private readonly ILogger<ProviderSecretsStore> _logger;
+    private readonly ConcurrentDictionary<string, OrganizationProviderSecrets> _cache =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _loadLocks =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    public ProviderSecretsStore(
+        IDbContextFactory<SecretsDbContext> dbFactory,
+        AesGcmSecretProtector protector,
+        IConfiguration configuration,
+        ILogger<ProviderSecretsStore> logger)
     {
+        _dbFactory = dbFactory;
+        _protector = protector;
         _configuration = configuration;
         _logger = logger;
     }
 
-    private SwiftSendSecretPayload? _swiftSend;
-    private SecurePostSecretPayload? _securePost;
-    private LegacyLinkSecretPayload? _legacyLink;
-    private AsyncFlowSecretPayload? _asyncFlow;
-
-    public SwiftSendSecretPayload SwiftSend =>
-        _swiftSend ?? throw new InvalidOperationException("SwiftSend secrets are not loaded.");
-
-    public SecurePostSecretPayload SecurePost =>
-        _securePost ?? throw new InvalidOperationException("SecurePost secrets are not loaded.");
-
-    public LegacyLinkSecretPayload LegacyLink =>
-        _legacyLink ?? throw new InvalidOperationException("LegacyLink secrets are not loaded.");
-
-    public AsyncFlowSecretPayload AsyncFlow =>
-        _asyncFlow ?? throw new InvalidOperationException("AsyncFlow secrets are not loaded.");
-
-    public async Task ReloadAsync(
-        IDbContextFactory<SecretsDbContext> dbFactory,
-        AesGcmSecretProtector protector,
+    public async Task<OrganizationProviderSecrets> GetForOrganizationAsync(
+        string organizationKey,
         CancellationToken cancellationToken = default)
     {
-        var organizationKey = _configuration["Organizations:Default:Key"] ?? "default";
+        if (string.IsNullOrWhiteSpace(organizationKey))
+            throw new ArgumentException("Organization key is required.", nameof(organizationKey));
 
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        if (_cache.TryGetValue(organizationKey, out var cached))
+            return cached;
+
+        var loadLock = _loadLocks.GetOrAdd(organizationKey, _ => new SemaphoreSlim(1, 1));
+        await loadLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_cache.TryGetValue(organizationKey, out cached))
+                return cached;
+
+            var loaded = await LoadOrganizationSecretsAsync(organizationKey, cancellationToken);
+            _cache[organizationKey] = loaded;
+            _logger.LogInformation(
+                "Provider secrets loaded for organization '{OrganizationKey}' (in memory only; never log values).",
+                organizationKey);
+            return loaded;
+        }
+        finally
+        {
+            loadLock.Release();
+        }
+    }
+
+    public async Task ReloadAsync(CancellationToken cancellationToken = default)
+    {
+        _cache.Clear();
+
+        var defaultKey = _configuration["Organizations:Default:Key"] ?? "default";
+        await GetForOrganizationAsync(defaultKey, cancellationToken);
+    }
+
+    private async Task<OrganizationProviderSecrets> LoadOrganizationSecretsAsync(
+        string organizationKey,
+        CancellationToken cancellationToken)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
         var rows = await db.ProviderSecrets
             .AsNoTracking()
             .Where(x => x.Organization.Key == organizationKey)
@@ -58,7 +88,7 @@ public sealed class ProviderSecretsStore
 
         foreach (var row in rows)
         {
-            var plain = protector.Decrypt(row.EncryptedPayload, row.Nonce);
+            var plain = _protector.Decrypt(row.EncryptedPayload, row.Nonce);
             switch (row.Provider)
             {
                 case ProviderSecretKeys.SwiftSend:
@@ -79,17 +109,24 @@ public sealed class ProviderSecretsStore
             }
         }
 
-        _swiftSend = swift ?? throw new InvalidOperationException($"Missing SwiftSend row in provider_secrets for organization '{organizationKey}'.");
-        _securePost = secure ?? throw new InvalidOperationException($"Missing SecurePost row in provider_secrets for organization '{organizationKey}'.");
-        _legacyLink = legacy ?? throw new InvalidOperationException($"Missing LegacyLink row in provider_secrets for organization '{organizationKey}'.");
-        _asyncFlow = async ?? throw new InvalidOperationException($"Missing AsyncFlow row in provider_secrets for organization '{organizationKey}'.");
+        var secrets = new OrganizationProviderSecrets
+        {
+            SwiftSend = swift ?? throw new InvalidOperationException(
+                $"Missing SwiftSend row in provider_secrets for organization '{organizationKey}'."),
+            SecurePost = secure ?? throw new InvalidOperationException(
+                $"Missing SecurePost row in provider_secrets for organization '{organizationKey}'."),
+            LegacyLink = legacy ?? throw new InvalidOperationException(
+                $"Missing LegacyLink row in provider_secrets for organization '{organizationKey}'."),
+            AsyncFlow = async ?? throw new InvalidOperationException(
+                $"Missing AsyncFlow row in provider_secrets for organization '{organizationKey}'."),
+        };
 
-        ValidatePayload(_swiftSend, nameof(SwiftSend));
-        ValidatePayload(_securePost, nameof(SecurePost));
-        ValidatePayload(_legacyLink, nameof(LegacyLink));
-        ValidatePayload(_asyncFlow, nameof(AsyncFlow));
+        ValidatePayload(secrets.SwiftSend, nameof(SwiftSend));
+        ValidatePayload(secrets.SecurePost, nameof(SecurePost));
+        ValidatePayload(secrets.LegacyLink, nameof(LegacyLink));
+        ValidatePayload(secrets.AsyncFlow, nameof(AsyncFlow));
 
-        _logger.LogInformation("Provider secrets loaded from database (in memory only; never log values).");
+        return secrets;
     }
 
     private static void ValidatePayload(SwiftSendSecretPayload p, string name)

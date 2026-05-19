@@ -65,6 +65,7 @@ Important columns:
 Current statuses:
 
 - `Pending`: waiting until `ScheduledSendAt`.
+- `Publishing`: claimed by the scheduler for outbound publish (short-lived).
 - `Queued`: published to RabbitMQ, waiting for provider processing.
 - `Sent`: all provider deliveries succeeded.
 - `Failed`: one or more provider deliveries failed.

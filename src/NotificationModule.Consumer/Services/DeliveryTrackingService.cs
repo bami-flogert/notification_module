@@ -96,12 +96,12 @@ public sealed class DeliveryTrackingService
 
         if (statuses.Count >= ProviderNames.Length && statuses.All(x => x == "Sent"))
         {
-            scheduledNotification.Status = "Sent";
+            scheduledNotification.Status = ScheduledNotificationStatuses.Sent;
             scheduledNotification.UpdatedAt = now;
         }
         else if (statuses.Any(x => x == "Failed"))
         {
-            scheduledNotification.Status = "Failed";
+            scheduledNotification.Status = ScheduledNotificationStatuses.Failed;
             scheduledNotification.UpdatedAt = now;
         }
 
