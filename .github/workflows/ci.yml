@@ -1,8 +1,12 @@
 name: CI
 
+# pull_request: runs when a PR is opened/updated.
+# push (main/master only): runs on direct pushes to the default branch (e.g. after merge).
+# Avoids running twice on every PR commit (push + pull_request used to both fire).
 on:
-  push:
   pull_request:
+  push:
+    branches: [main, master]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -37,5 +41,41 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build producer and consumer images
-        run: docker compose --env-file env.example build producer consumer
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # MCR sometimes returns 403 for anonymous metadata pulls on shared runners (transient / rate limit).
+      - name: Pull .NET base images (with retry)
+        run: |
+          set -euo pipefail
+          images=(
+            mcr.microsoft.com/dotnet/sdk:8.0-noble
+            mcr.microsoft.com/dotnet/aspnet:8.0-noble
+          )
+          for image in "${images[@]}"; do
+            for attempt in 1 2 3 4 5; do
+              if docker pull "$image"; then
+                break
+              fi
+              if [[ "$attempt" -eq 5 ]]; then
+                echo "Failed to pull $image after 5 attempts." >&2
+                exit 1
+              fi
+              echo "Pull failed for $image (attempt $attempt), retrying in 15s..."
+              sleep 15
+            done
+          done
+
+      - name: Build producer and consumer images (with retry)
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if docker compose --env-file env.example build producer consumer; then
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              exit 1
+            fi
+            echo "Compose build failed (attempt $attempt), retrying in 20s..."
+            sleep 20
+          done
