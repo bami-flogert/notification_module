@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using NotificationModule.Consumer.Secrets;
 using NotificationModule.Shared.Models;
 
 namespace NotificationModule.Consumer.Adapters;
@@ -9,30 +10,37 @@ public class SwiftSendProvider : INotificationProvider
     public string ChannelName => "SwiftSend";
 
     private readonly HttpClient _http;
+    private readonly ProviderSecretsStore _secrets;
+    private readonly string _studentGroup;
     private readonly ILogger<SwiftSendProvider> _logger;
 
-    public SwiftSendProvider(IConfiguration config, ILogger<SwiftSendProvider> logger)
+    public SwiftSendProvider(
+        ProviderSecretsStore secrets,
+        IConfiguration config,
+        ILogger<SwiftSendProvider> logger)
     {
+        _secrets = secrets;
         _logger = logger;
-        _http   = new HttpClient { BaseAddress = new Uri(config["Providers:SwiftSend:BaseUrl"]!) };
-        _http.DefaultRequestHeaders.Add("X-API-KEY", config["Providers:SwiftSend:ApiKey"]);
-        _http.DefaultRequestHeaders.Add(
-            "X-STUDENT-GROUP",
-            config["Providers:StudentGroup"] ?? "unknown-group");
+        var baseUrl = config["Providers:SwiftSend:BaseUrl"]
+            ?? throw new InvalidOperationException("Providers:SwiftSend:BaseUrl is required.");
+
+        _studentGroup = config["Providers:StudentGroup"] ?? "unknown-group";
+        _http = new HttpClient { BaseAddress = new Uri(baseUrl) };
+        _http.DefaultRequestHeaders.Add("X-STUDENT-GROUP", _studentGroup);
     }
 
     public async Task SendAsync(AppointmentMessage message, CancellationToken ct)
     {
-        // FakeComWorld SwiftSend expects POST /swiftsend with this schema:
-        // { type: "SMS"|"EMAIL", recipients: string[], content: string }
+        var orgSecrets = await _secrets.GetForOrganizationAsync(message.OrganizationKey, ct);
+
         var body = new
         {
-            type       = "SMS",
+            type = "SMS",
             recipients = new[] { message.PatientPhone },
-            content    = FormatSmsText(message),
+            content = FormatSmsText(message),
         };
 
-        using var response = await PostJsonWithRetryAsync("/swiftsend", body, ct);
+        using var response = await PostJsonWithRetryAsync("/swiftsend", body, orgSecrets.SwiftSend.ApiKey, ct);
         response.EnsureSuccessStatusCode();
     }
 
@@ -40,14 +48,24 @@ public class SwiftSendProvider : INotificationProvider
         $"Hi {m.PatientName}, your appointment is confirmed for " +
         $"{m.StartDateTime:dd MMM yyyy HH:mm} UTC. Status: {m.Status}.";
 
-    private async Task<HttpResponseMessage> PostJsonWithRetryAsync(string path, object body, CancellationToken ct)
+    private async Task<HttpResponseMessage> PostJsonWithRetryAsync(
+        string path,
+        object body,
+        string apiKey,
+        CancellationToken ct)
     {
         const int maxAttempts = 3;
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
             try
             {
-                var response = await _http.PostAsJsonAsync(path, body, ct);
+                using var request = new HttpRequestMessage(HttpMethod.Post, path)
+                {
+                    Content = JsonContent.Create(body),
+                };
+                request.Headers.Add("X-API-KEY", apiKey);
+
+                var response = await _http.SendAsync(request, ct);
                 if (response.IsSuccessStatusCode)
                     return response;
 
@@ -65,9 +83,11 @@ public class SwiftSendProvider : INotificationProvider
             await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt), ct);
         }
 
-        // unreachable, but keeps compiler happy
-        return await _http.PostAsJsonAsync(path, body, ct);
+        using var lastRequest = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = JsonContent.Create(body),
+        };
+        lastRequest.Headers.Add("X-API-KEY", apiKey);
+        return await _http.SendAsync(lastRequest, ct);
     }
 }
-
-

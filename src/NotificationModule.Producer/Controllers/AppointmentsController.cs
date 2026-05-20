@@ -8,17 +8,24 @@ namespace NotificationModule.Producer.Controllers;
 [Route("api/[controller]")]
 public class AppointmentsController : ControllerBase
 {
-    private readonly RabbitMqPublisher _publisher;
+    private readonly AppointmentIngestionService _ingestionService;
     private readonly ILogger<AppointmentsController> _logger;
 
-    public AppointmentsController(RabbitMqPublisher publisher, ILogger<AppointmentsController> logger)
+    public AppointmentsController(
+        AppointmentIngestionService ingestionService,
+        ILogger<AppointmentsController> logger)
     {
-        _publisher = publisher;
-        _logger    = logger;
+        _ingestionService = ingestionService;
+        _logger = logger;
     }
 
     [HttpPost]
-    public IActionResult Post([FromBody] AppointmentMessage message)
+    [HttpPost("{organizationKey}")]
+    public async Task<IActionResult> Post(
+        [FromBody] AppointmentMessage message,
+        string? organizationKey,
+        [FromHeader(Name = "X-Organization-Key")] string? organizationHeader,
+        CancellationToken cancellationToken)
     {
         if (message is null)
             return BadRequest("Body is required.");
@@ -26,11 +33,35 @@ public class AppointmentsController : ControllerBase
         _logger.LogInformation("Received appointment {Uuid} for patient {Patient}",
             message.AppointmentUuid, message.PatientName);
 
-        _publisher.Publish(message);
+        AppointmentIngestionResult result;
+        try
+        {
+            result = await _ingestionService.IngestAsync(
+                message,
+                organizationKey ?? organizationHeader,
+                cancellationToken);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
 
-        _logger.LogInformation("Published appointment {Uuid} to RabbitMQ", message.AppointmentUuid);
+        _logger.LogInformation(
+            "Saved appointment {Uuid} for organization {OrganizationKey}",
+            result.AppointmentUuid,
+            result.OrganizationKey);
 
-        return Accepted(new { message = "Notification queued.", appointmentUuid = message.AppointmentUuid });
+        return Accepted(new
+        {
+            message = "Appointment saved.",
+            appointmentUuid = result.AppointmentUuid,
+            organizationKey = result.OrganizationKey,
+            pendingNotifications = result.PendingNotificationCount,
+        });
     }
 }
 

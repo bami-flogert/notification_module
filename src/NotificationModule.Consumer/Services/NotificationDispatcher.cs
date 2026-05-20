@@ -77,5 +77,46 @@ public class NotificationDispatcher
 
         await Task.WhenAll(tasks);
     }
+
+    public async Task<NotificationDispatchResult> DispatchToProviderAsync(
+        AppointmentMessage message,
+        string providerName,
+        CancellationToken ct)
+    {
+        var provider = _providers.SingleOrDefault(p =>
+            string.Equals(p.ChannelName, providerName, StringComparison.OrdinalIgnoreCase));
+
+        if (provider is null)
+            return NotificationDispatchResult.Failed($"Provider '{providerName}' is not registered.", providerName);
+
+        try
+        {
+            _logger.LogInformation("Sending via {Channel} for {Uuid}",
+                provider.ChannelName, message.AppointmentUuid);
+
+            await provider.SendAsync(message, ct);
+
+            _logger.LogInformation("{Channel} succeeded for {Uuid}",
+                provider.ChannelName, message.AppointmentUuid);
+
+            return NotificationDispatchResult.Succeeded(provider.ChannelName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "{Channel} failed for {Uuid}",
+                provider.ChannelName, message.AppointmentUuid);
+
+                return NotificationDispatchResult.Failed(ex.Message, provider.ChannelName);
+        }
+    }
+}
+
+public sealed record NotificationDispatchResult(string Provider, bool Success, string? ErrorMessage)
+{
+    public static NotificationDispatchResult Succeeded(string provider) =>
+        new(provider, true, null);
+
+    public static NotificationDispatchResult Failed(string errorMessage, string provider = "") =>
+        new(provider, false, errorMessage);
 }
 

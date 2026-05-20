@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text;
+using NotificationModule.Consumer.Secrets;
 using NotificationModule.Shared.Models;
 
 namespace NotificationModule.Consumer.Adapters;
@@ -10,20 +11,21 @@ public class LegacyLinkProvider : INotificationProvider
     public string ChannelName => "LegacyLink";
 
     private readonly HttpClient _http;
+    private readonly ProviderSecretsStore _secrets;
     private readonly string _studentGroup;
     private readonly ILogger<LegacyLinkProvider> _logger;
 
-    public LegacyLinkProvider(IConfiguration config, ILogger<LegacyLinkProvider> logger)
+    public LegacyLinkProvider(
+        ProviderSecretsStore secrets,
+        IConfiguration config,
+        ILogger<LegacyLinkProvider> logger)
     {
+        _secrets = secrets;
         _logger = logger;
-        var baseUrl  = config["Providers:LegacyLink:BaseUrl"]!;
-        var username = config["Providers:LegacyLink:Username"]!;
-        var password = config["Providers:LegacyLink:Password"]!;
+        var baseUrl = config["Providers:LegacyLink:BaseUrl"]
+            ?? throw new InvalidOperationException("Providers:LegacyLink:BaseUrl is required.");
 
         _http = new HttpClient { BaseAddress = new Uri(baseUrl) };
-        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
-        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", credentials);
-
         _studentGroup = config["Providers:StudentGroup"] ?? "unknown-group";
         _http.DefaultRequestHeaders.Add("X-STUDENT-GROUP", _studentGroup);
         _http.DefaultRequestHeaders.Accept.ParseAdd("application/xml");
@@ -31,11 +33,15 @@ public class LegacyLinkProvider : INotificationProvider
 
     public async Task SendAsync(AppointmentMessage message, CancellationToken ct)
     {
-        // FakeComWorld LegacyLink expects POST /LegacyLink/SendSms with an XML body (not SOAP).
+        var orgSecrets = await _secrets.GetForOrganizationAsync(message.OrganizationKey, ct);
         var xmlBody = BuildLegacyLinkSendSmsXml(message);
-        var content = new StringContent(xmlBody, Encoding.UTF8, "application/xml");
 
-        using var response = await PostXmlWithRetryAsync("/LegacyLink/SendSms", xmlBody, ct);
+        using var response = await PostXmlWithRetryAsync(
+            "/LegacyLink/SendSms",
+            xmlBody,
+            orgSecrets.LegacyLink.Username,
+            orgSecrets.LegacyLink.Password,
+            ct);
         response.EnsureSuccessStatusCode();
     }
 
@@ -65,15 +71,20 @@ public class LegacyLinkProvider : INotificationProvider
             .Replace("'", "&apos;");
     }
 
-    private async Task<HttpResponseMessage> PostXmlWithRetryAsync(string path, string xmlBody, CancellationToken ct)
+    private async Task<HttpResponseMessage> PostXmlWithRetryAsync(
+        string path,
+        string xmlBody,
+        string username,
+        string password,
+        CancellationToken ct)
     {
         const int maxAttempts = 3;
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
             try
             {
-                using var content = new StringContent(xmlBody, Encoding.UTF8, "application/xml");
-                var response = await _http.PostAsync(path, content, ct);
+                using var request = CreateXmlRequest(path, xmlBody, username, password);
+                var response = await _http.SendAsync(request, ct);
 
                 if (response.IsSuccessStatusCode)
                     return response;
@@ -92,9 +103,23 @@ public class LegacyLinkProvider : INotificationProvider
             await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt), ct);
         }
 
-        using var lastContent = new StringContent(xmlBody, Encoding.UTF8, "application/xml");
-        return await _http.PostAsync(path, lastContent, ct);
+        using var lastRequest = CreateXmlRequest(path, xmlBody, username, password);
+        return await _http.SendAsync(lastRequest, ct);
+    }
+
+    private static HttpRequestMessage CreateXmlRequest(
+        string path,
+        string xmlBody,
+        string username,
+        string password)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = new StringContent(xmlBody, Encoding.UTF8, "application/xml"),
+        };
+
+        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}"));
+        request.Headers.Authorization = new AuthenticationHeaderValue("Basic", credentials);
+        return request;
     }
 }
-
-

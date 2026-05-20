@@ -1,7 +1,8 @@
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
+# Pin OS variant (not bare 8.0) — bare tags intermittently 403 on GitHub Actions MCR pulls.
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble AS base
 WORKDIR /app
 
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:8.0-noble AS build
 WORKDIR /src
 COPY . .
 RUN dotnet restore "src/NotificationModule.Consumer/NotificationModule.Consumer.csproj"

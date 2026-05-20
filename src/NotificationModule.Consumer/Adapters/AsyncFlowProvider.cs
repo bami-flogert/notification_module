@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using NotificationModule.Consumer.Secrets;
 using NotificationModule.Shared.Models;
 
 namespace NotificationModule.Consumer.Adapters;
@@ -13,52 +14,60 @@ public class AsyncFlowProvider : INotificationProvider
     public string ChannelName => "AsyncFlow";
 
     private readonly HttpClient _http;
+    private readonly ProviderSecretsStore _secrets;
     private readonly ILogger<AsyncFlowProvider> _logger;
     private readonly string _studentGroup;
-    private readonly string _apiKey;
 
-    public AsyncFlowProvider(IConfiguration config, ILogger<AsyncFlowProvider> logger)
+    public AsyncFlowProvider(
+        ProviderSecretsStore secrets,
+        IConfiguration config,
+        ILogger<AsyncFlowProvider> logger)
     {
+        _secrets = secrets;
         _logger = logger;
 
-        var baseUrl = config["Providers:AsyncFlow:BaseUrl"] ?? config["Providers:AsyncFlow:BaseURL"]!;
+        var baseUrl = config["Providers:AsyncFlow:BaseUrl"]
+            ?? config["Providers:AsyncFlow:BaseURL"]
+            ?? throw new InvalidOperationException("Providers:AsyncFlow:BaseUrl is required.");
+
         _studentGroup = config["Providers:StudentGroup"] ?? "unknown-group";
-        _apiKey = config["Providers:AsyncFlow:ApiKey"] ?? "asyncflow-api-key";
 
         _http = new HttpClient { BaseAddress = new Uri(baseUrl) };
         _http.DefaultRequestHeaders.Add("X-STUDENT-GROUP", _studentGroup);
-        _http.DefaultRequestHeaders.Add("X-API-KEY", _apiKey);
     }
 
     public async Task SendAsync(AppointmentMessage message, CancellationToken ct)
     {
+        var orgSecrets = await _secrets.GetForOrganizationAsync(message.OrganizationKey, ct);
+        var apiKey = orgSecrets.AsyncFlow.ApiKey;
+
         var submitBody = new
         {
             destination = message.PatientPhone,
-            content = $"Appointment reminder for {message.PatientName}: {message.StartDateTime:dd MMM yyyy HH:mm} UTC — {message.Status}",
+            content =
+                $"Appointment reminder for {message.PatientName}: {message.StartDateTime:dd MMM yyyy HH:mm} UTC — {message.Status}",
             priority = "normal",
         };
 
-        using var submitResponse = await PostJsonWithRetryAsync("/asyncflow", submitBody, ct);
-        submitResponse.EnsureSuccessStatusCode(); // should be 202
+        using var submitResponse = await PostJsonWithRetryAsync("/asyncflow", submitBody, apiKey, ct);
+        submitResponse.EnsureSuccessStatusCode();
 
         var submitJson = await submitResponse.Content.ReadAsStringAsync(ct);
         var trackingId = ExtractTrackingId(submitJson);
         if (string.IsNullOrWhiteSpace(trackingId))
             throw new InvalidOperationException($"AsyncFlow submit succeeded but no trackingId returned. Body: {submitJson}");
 
-        await WaitForCompletionAsync(trackingId, ct);
+        await WaitForCompletionAsync(trackingId, apiKey, ct);
     }
 
-    private async Task WaitForCompletionAsync(string trackingId, CancellationToken ct)
+    private async Task WaitForCompletionAsync(string trackingId, string apiKey, CancellationToken ct)
     {
-        // Keep polling short so the worker doesn't block too long in demo runs.
         var deadline = DateTimeOffset.UtcNow.AddSeconds(20);
         var delayMs = 400;
 
         while (DateTimeOffset.UtcNow < deadline && !ct.IsCancellationRequested)
         {
-            using var statusResponse = await GetWithRetryAsync($"/asyncflow/{trackingId}", ct);
+            using var statusResponse = await GetWithRetryAsync($"/asyncflow/{trackingId}", apiKey, ct);
             statusResponse.EnsureSuccessStatusCode();
 
             var json = await statusResponse.Content.ReadAsStringAsync(ct);
@@ -89,14 +98,19 @@ public class AsyncFlowProvider : INotificationProvider
         return doc.RootElement.TryGetProperty("status", out var el) ? el.GetString() : null;
     }
 
-    private async Task<HttpResponseMessage> PostJsonWithRetryAsync(string path, object body, CancellationToken ct)
+    private async Task<HttpResponseMessage> PostJsonWithRetryAsync(
+        string path,
+        object body,
+        string apiKey,
+        CancellationToken ct)
     {
         const int maxAttempts = 3;
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
             try
             {
-                var response = await _http.PostAsJsonAsync(path, body, ct);
+                using var request = CreateJsonRequest(HttpMethod.Post, path, body, apiKey);
+                var response = await _http.SendAsync(request, ct);
                 if (response.IsSuccessStatusCode)
                     return response;
 
@@ -114,17 +128,19 @@ public class AsyncFlowProvider : INotificationProvider
             await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt), ct);
         }
 
-        return await _http.PostAsJsonAsync(path, body, ct);
+        using var lastRequest = CreateJsonRequest(HttpMethod.Post, path, body, apiKey);
+        return await _http.SendAsync(lastRequest, ct);
     }
 
-    private async Task<HttpResponseMessage> GetWithRetryAsync(string path, CancellationToken ct)
+    private async Task<HttpResponseMessage> GetWithRetryAsync(string path, string apiKey, CancellationToken ct)
     {
         const int maxAttempts = 3;
         for (var attempt = 1; attempt <= maxAttempts; attempt++)
         {
             try
             {
-                var response = await _http.GetAsync(path, ct);
+                using var request = CreateJsonRequest(HttpMethod.Get, path, body: null, apiKey);
+                var response = await _http.SendAsync(request, ct);
                 if (response.IsSuccessStatusCode)
                     return response;
 
@@ -142,7 +158,16 @@ public class AsyncFlowProvider : INotificationProvider
             await Task.Delay(TimeSpan.FromMilliseconds(300 * attempt), ct);
         }
 
-        return await _http.GetAsync(path, ct);
+        using var lastRequest = CreateJsonRequest(HttpMethod.Get, path, body: null, apiKey);
+        return await _http.SendAsync(lastRequest, ct);
+    }
+
+    private static HttpRequestMessage CreateJsonRequest(HttpMethod method, string path, object? body, string apiKey)
+    {
+        var request = new HttpRequestMessage(method, path);
+        request.Headers.Add("X-API-KEY", apiKey);
+        if (body is not null)
+            request.Content = JsonContent.Create(body);
+        return request;
     }
 }
-
