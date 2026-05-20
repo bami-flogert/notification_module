@@ -66,8 +66,8 @@ public sealed class RabbitMqRepublisher : IDisposable
         if (_connection?.IsOpen == true && _channel?.IsOpen == true)
             return;
 
-        _connection?.Dispose();
         _channel?.Dispose();
+        _connection?.Dispose();
 
         _connection = _factory.CreateConnection();
         _channel = _connection.CreateModel();
