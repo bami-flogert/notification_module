@@ -62,9 +62,7 @@
         "footer": {
           "countRows": false,
           "fields": "",
-          "reducer": [
-            "sum"
-          ],
+          "reducer": ["sum"],
           "show": false
         },
         "showHeader": true,
@@ -126,9 +124,7 @@
         "footer": {
           "countRows": false,
           "fields": "",
-          "reducer": [
-            "sum"
-          ],
+          "reducer": ["sum"],
           "show": false
         },
         "showHeader": true,
@@ -190,9 +186,7 @@
         "footer": {
           "countRows": false,
           "fields": "",
-          "reducer": [
-            "sum"
-          ],
+          "reducer": ["sum"],
           "show": false
         },
         "showHeader": true
@@ -201,7 +195,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT status, count(*) AS count, 'scheduled_notifications' AS source FROM scheduled_notifications GROUP BY status UNION ALL SELECT status, count(*) AS count, 'notification_deliveries' AS source FROM notification_deliveries GROUP BY status ORDER BY source, status;",
+          "rawSql": "SELECT sn.\"Status\" AS notification_status, count(*)::int AS total_count, 'scheduled_notifications' AS source FROM scheduled_notifications sn GROUP BY sn.\"Status\" UNION ALL SELECT d.\"Status\" AS notification_status, count(*)::int AS total_count, 'notification_deliveries' AS source FROM notification_deliveries d GROUP BY d.\"Status\" ORDER BY source, notification_status;",
           "refId": "A"
         }
       ],
@@ -248,9 +242,7 @@
         "footer": {
           "countRows": false,
           "fields": "",
-          "reducer": [
-            "sum"
-          ],
+          "reducer": ["sum"],
           "show": false
         },
         "showHeader": true,
@@ -312,9 +304,7 @@
         "footer": {
           "countRows": false,
           "fields": "",
-          "reducer": [
-            "sum"
-          ],
+          "reducer": ["sum"],
           "show": false
         },
         "showHeader": true
