@@ -14,7 +14,7 @@ public sealed class DeliveryTrackingServiceTests
     public async Task RecordAsync_marks_scheduled_notification_sent_when_all_providers_succeed()
     {
         var (dbFactory, scheduledNotificationId) = await SeedScheduledNotificationAsync();
-        var service = CreateService(dbFactory, AllProviders);
+        var service = CreateService(dbFactory);
         var message = CreateMessage(scheduledNotificationId);
 
         foreach (var provider in AllProviders)
