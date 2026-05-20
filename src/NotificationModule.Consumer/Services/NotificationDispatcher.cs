@@ -22,30 +22,8 @@ public class NotificationDispatcher
         _logger    = logger;
     }
 
-    public async Task DispatchAsync(AppointmentMessage message, CancellationToken ct)
-    {
-        var tasks = _providers.Select(async provider =>
-        {
-            try
-            {
-                _logger.LogInformation("Sending via {Channel} for {Uuid}",
-                    provider.ChannelName, message.AppointmentUuid);
-
-                await provider.SendAsync(message, ct);
-
-                _logger.LogInformation("{Channel} succeeded for {Uuid}",
-                    provider.ChannelName, message.AppointmentUuid);
-            }
-            catch (Exception ex)
-            {
-                // Log but don't fail other providers
-                _logger.LogError(ex, "{Channel} failed for {Uuid}",
-                    provider.ChannelName, message.AppointmentUuid);
-            }
-        });
-
-        await Task.WhenAll(tasks);
-    }
+    public Task DispatchAsync(AppointmentMessage message, CancellationToken ct)
+        => DispatchAsync(message, null, ct);
 
     /// <summary>
     /// Dispatch to a single provider identified by channel name (case-insensitive).
@@ -57,27 +35,16 @@ public class NotificationDispatcher
             ? _providers
             : _providers.Where(p => string.Equals(p.ChannelName, channelName, StringComparison.OrdinalIgnoreCase));
 
-        var tasks = targets.Select(async provider =>
+        var tasks = targets.Select(provider => DispatchToProviderAsync(message, provider.ChannelName, ct));
+        var results = await Task.WhenAll(tasks);
+
+        foreach (var result in results.Where(r => !r.Success))
         {
-            try
-            {
-                _logger.LogInformation("Sending via {Channel} for {Uuid}",
-                    provider.ChannelName, message.AppointmentUuid);
-
-                await provider.SendAsync(message, ct);
-
-                _logger.LogInformation("{Channel} succeeded for {Uuid}",
-                    provider.ChannelName, message.AppointmentUuid);
-            }
-            catch (Exception ex)
-            {
-                // Log but don't fail other providers
-                _logger.LogError(ex, "{Channel} failed for {Uuid}",
-                    provider.ChannelName, message.AppointmentUuid);
-            }
-        });
-
-        await Task.WhenAll(tasks);
+            _logger.LogError("Provider {Provider} failed for {Uuid}: {Error}",
+                result.Provider,
+                message.AppointmentUuid,
+                result.ErrorMessage);
+        }
     }
 
     public async Task<NotificationDispatchResult> DispatchToProviderAsync(

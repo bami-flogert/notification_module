@@ -104,6 +104,11 @@ public class RabbitMqPublisher : IDisposable
             routingKey: string.Empty,
             basicProperties: props,
             body: body);
+
+        NotificationTelemetry.RabbitMqMessagesPublished.Add(
+            1,
+            new KeyValuePair<string, object?>("organization.key", message.OrganizationKey),
+            new KeyValuePair<string, object?>("reminder.type", message.ReminderType));
     }
 
     private static void InjectTraceContextIntoBasicProperties(IBasicProperties properties, string key, string value)

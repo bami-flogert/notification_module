@@ -27,6 +27,18 @@ public static class NotificationTelemetry
         "notification_dispatch_total",
         unit: "dispatches");
 
+    public static readonly Counter<long> NotificationMessagesReceived = Meter.CreateCounter<long>(
+        "notification_messages_received_total",
+        unit: "messages");
+
+    public static readonly Counter<long> NotificationMessagesFailed = Meter.CreateCounter<long>(
+        "notification_messages_failed_total",
+        unit: "messages");
+
+    public static readonly Counter<long> RabbitMqMessagesPublished = Meter.CreateCounter<long>(
+        "rabbitmq_messages_published_total",
+        unit: "messages");
+
     public static readonly Histogram<double> NotificationDispatchDurationMs = Meter.CreateHistogram<double>(
         "notification_dispatch_duration_ms",
         unit: "ms");
