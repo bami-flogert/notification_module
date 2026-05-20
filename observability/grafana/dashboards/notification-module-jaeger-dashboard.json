@@ -1,0 +1,97 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "panels": [
+    {
+      "datasource": {
+        "type": "jaeger",
+        "uid": "notification-jaeger"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "showTime": true,
+        "showTags": true,
+        "showLogs": true
+      },
+      "targets": [
+        {
+          "query": "service=notification-producer",
+          "queryType": "search",
+          "refId": "A"
+        }
+      ],
+      "title": "Producer Traces",
+      "type": "traces"
+    },
+    {
+      "datasource": {
+        "type": "jaeger",
+        "uid": "notification-jaeger"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "id": 2,
+      "options": {
+        "showTime": true,
+        "showTags": true,
+        "showLogs": true
+      },
+      "targets": [
+        {
+          "query": "service=notification-consumer",
+          "queryType": "search",
+          "refId": "A"
+        }
+      ],
+      "title": "Consumer Traces",
+      "type": "traces"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": [
+    "notification",
+    "jaeger",
+    "tracing"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "Notification Module - Jaeger Traces",
+  "uid": "notification-module-jaeger",
+  "version": 1,
+  "weekStart": ""
+}

@@ -35,6 +35,12 @@ Belangrijke metrics:
 - `scheduler_cycle_duration_ms`
 - `scheduler_due_notifications_count`
 
+Provisioned dashboards:
+
+- `Notification Module` (PostgreSQL operationeel overzicht)
+- `Notification Module - Prometheus Metrics`
+- `Notification Module - Jaeger Traces`
+
 Zie `OPENTELEMETRY_STEP1_IMPLEMENTATION.md` voor details en DB data-flow analyse.
 
 ## Voorbeeldrequest
