@@ -84,22 +84,26 @@ curl -sS -X POST "http://127.0.0.1:5001/api/appointments/default" \
   -d "$APPOINTMENT_JSON"
 echo
 
-echo "==> Waiting for delivery metrics in Prometheus"
+echo "==> Waiting for delivery and consumer metrics in Prometheus"
+delivery_value=0
+received_value=0
 for i in {1..48}; do
-  payload="$(query_prometheus 'increase(notification_delivery_success_deliveries_total[5m])')"
-  value="$(printf '%s' "$payload" | metric_value)"
-  echo "  attempt $i: delivery_success_increase=$value"
-  if awk "BEGIN {exit !($value > 0)}" >/dev/null 2>&1; then
-    echo "==> Delivery metric observed"
+  delivery_payload="$(query_prometheus 'increase(notification_delivery_success_total[5m])')"
+  delivery_value="$(printf '%s' "$delivery_payload" | metric_value)"
+  received_payload="$(query_prometheus 'increase(notification_messages_received_total[5m])')"
+  received_value="$(printf '%s' "$received_payload" | metric_value)"
+  echo "  attempt $i: delivery_success_increase=$delivery_value messages_received_increase=$received_value"
+  if awk "BEGIN {exit !($delivery_value > 0 && $received_value > 0)}" >/dev/null 2>&1; then
+    echo "==> Delivery and received metrics observed"
     break
   fi
   sleep 15
 done
 
-if awk "BEGIN {exit !($value > 0)}" >/dev/null 2>&1; then
+if awk "BEGIN {exit !($delivery_value > 0 && $received_value > 0)}" >/dev/null 2>&1; then
   echo "==> Smoke metrics test passed"
   exit 0
 fi
 
-echo "==> Smoke metrics test failed: delivery metric did not appear"
+echo "==> Smoke metrics test failed: delivery_success=$delivery_value messages_received=$received_value"
 exit 1

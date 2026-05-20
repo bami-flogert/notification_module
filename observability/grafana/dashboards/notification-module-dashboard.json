@@ -15,7 +15,7 @@
       }
     ]
   },
-  "description": "A Grafana dashboard for the notification module showing appointments, scheduled reminders, and provider delivery status.",
+  "description": "Operational and billing view for OpenMRS administrators. Uses internal identifiers (PatientUuid, AppointmentUuid) only—no patient names, phone numbers, or email in panels. Clinical detail requires a separate restricted view.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -77,7 +77,7 @@
       "targets": [
         {
           "format": "table",
-          "rawSql": "SELECT o.\"Key\" AS organization, a.\"AppointmentUuid\" AS appointment_uuid, a.\"PatientName\" AS patient_name, a.\"StartDateTime\" AS start_time, a.\"Status\" AS status, a.\"Location\" AS location FROM appointments a JOIN organizations o ON o.\"Id\" = a.\"OrganizationId\" WHERE a.\"StartDateTime\" > now() ORDER BY a.\"StartDateTime\" LIMIT 200;",
+          "rawSql": "SELECT o.\"Key\" AS organization, a.\"AppointmentUuid\" AS appointment_uuid, a.\"PatientUuid\" AS patient_uuid, a.\"StartDateTime\" AS start_time, a.\"Status\" AS status, a.\"Location\" AS location FROM appointments a JOIN organizations o ON o.\"Id\" = a.\"OrganizationId\" WHERE a.\"StartDateTime\" > now() ORDER BY a.\"StartDateTime\" LIMIT 200;",
           "refId": "A"
         }
       ],

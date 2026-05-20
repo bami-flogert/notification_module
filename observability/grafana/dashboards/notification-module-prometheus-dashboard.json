@@ -80,8 +80,8 @@
       },
       "targets": [
         {
-          "expr": "rate(notification_messages_received_total[5m])",
-          "legendFormat": "messages_received",
+          "expr": "sum by (queue) (rate(notification_messages_received_total[5m]))",
+          "legendFormat": "{{queue}}",
           "refId": "A"
         }
       ],
@@ -148,8 +148,8 @@
       },
       "targets": [
         {
-          "expr": "rate(notification_dispatch_total[5m])",
-          "legendFormat": "dispatch_rate",
+          "expr": "sum by (provider, status) (rate(notification_dispatch_total[5m]))",
+          "legendFormat": "{{provider}} {{status}}",
           "refId": "A"
         }
       ],
@@ -234,8 +234,8 @@
       },
       "targets": [
         {
-          "expr": "rate(notification_delivery_success_total[5m])",
-          "legendFormat": "success_{provider}",
+          "expr": "sum by (provider) (rate(notification_delivery_success_total[5m]))",
+          "legendFormat": "{{provider}}",
           "refId": "A"
         }
       ],
@@ -252,8 +252,8 @@
       },
       "targets": [
         {
-          "expr": "rate(notification_delivery_failure_total[5m])",
-          "legendFormat": "failure_{provider}",
+          "expr": "sum by (provider) (rate(notification_delivery_failure_total[5m]))",
+          "legendFormat": "{{provider}}",
           "refId": "A"
         }
       ],
@@ -333,6 +333,24 @@
         }
       ],
       "title": "Provider Retry Attempts Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "notification-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
+      "id": 13,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "sum by (queue) (rate(notification_messages_failed_total[5m]))",
+          "legendFormat": "{{queue}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Messages Failed Rate",
       "type": "timeseries"
     }
   ],

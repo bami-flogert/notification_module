@@ -41,7 +41,13 @@ Provisioned dashboards:
 - `Notification Module - Prometheus Metrics`
 - `Notification Module - Jaeger Traces`
 
-Zie `OPENTELEMETRY_STEP1_IMPLEMENTATION.md` voor details en DB data-flow analyse.
+Zie [`OBSERVABILITY_GAP_ANALYSIS_AND_FIX_PLAN.md`](OBSERVABILITY_GAP_ANALYSIS_AND_FIX_PLAN.md) voor de volledige observability-audit, gap-analyse en geprioriteerde fix-backlog. Zie [`DASHBOARD_DATABASE.md`](DASHBOARD_DATABASE.md) voor DB data-flow en dashboard-SQL.
+
+Metrieken smoke-test (Docker-stack moet draaien of wordt gestart door het script):
+
+```bash
+./scripts/smoke-test-metrics.sh
+```
 
 ## Voorbeeldrequest
 

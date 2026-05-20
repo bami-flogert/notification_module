@@ -110,7 +110,7 @@ Appointments with a start time in the future.
 select
   o."Key" as organization,
   a."AppointmentUuid",
-  a."PatientName",
+  a."PatientUuid",
   a."StartDateTime",
   a."Status",
   a."Location"
@@ -128,7 +128,7 @@ Appointments that have already started.
 select
   o."Key" as organization,
   a."AppointmentUuid",
-  a."PatientName",
+  a."PatientUuid",
   a."StartDateTime",
   a."Status"
 from appointments a
@@ -145,7 +145,7 @@ Pending reminders that have not been sent yet.
 select
   o."Key" as organization,
   a."AppointmentUuid",
-  a."PatientName",
+  a."PatientUuid",
   sn."ReminderType",
   sn."ScheduledSendAt",
   sn."Status"
@@ -186,6 +186,6 @@ order by d."UpdatedAt" desc;
 
 ## Privacy Notes
 
-The `appointments` table contains patient-identifiable data. Dashboard views should restrict access per organization and avoid showing patient details to users who only need operational or billing information.
+The `appointments` table stores patient-identifiable fields (`PatientName`, `PatientPhone`, `PatientEmail`) for outbound messaging. Default admin dashboard SQL in this repo and the provisioned Grafana **Notification Module** dashboard use **`PatientUuid`** and **`AppointmentUuid` only**—not names or contact fields.
 
-For billing/audit views, prefer `notification_deliveries` joined with organization, provider, status, and timestamps. Avoid exposing patient name, phone, email, instructions, or raw payload unless the user role explicitly needs appointment-level detail.
+Restrict dashboard access per organization. For billing/audit views, prefer `notification_deliveries` joined with organization, provider, status, and timestamps. Expose name, phone, email, instructions, or `RawSourcePayload` only in roles that explicitly require clinical appointment detail.

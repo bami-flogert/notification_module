@@ -70,6 +70,7 @@ public class NotificationWorker : BackgroundService
 
             consumer.Received += async (_, ea) =>
             {
+                string? mappedProvider = null;
                 try
                 {
                     var parentContext = Propagator.Extract(
@@ -87,25 +88,31 @@ public class NotificationWorker : BackgroundService
                     var message = JsonSerializer.Deserialize<AppointmentMessage>(json,
                         new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-                    if (message is not null)
+                    if (message is null)
                     {
-                        var providerName = NotificationQueueMapping.TryGetProviderName(queue);
+                        RecordMessageFailed(queue, null);
+                        channel.BasicNack(ea.DeliveryTag, multiple: false, requeue: false);
+                        return;
+                    }
 
-                        if (providerName is not null)
-                        {
-                            activity?.SetTag("messaging.rabbitmq.queue", queue);
-                            activity?.SetTag("appointment.uuid", message.AppointmentUuid);
-                            activity?.SetTag("organization.key", message.OrganizationKey);
-                            activity?.SetTag("scheduled_notification.id", message.ScheduledNotificationId?.ToString());
-                            await DispatchAndTrackAsync(message, providerName, stoppingToken);
-                        }
-                        else
-                        {
-                            _logger.LogWarning(
-                                "Queue {Queue} is not mapped to a provider; fan-out to all registered providers.",
-                                queue);
-                            await DispatchToAllProvidersAsync(message, stoppingToken);
-                        }
+                    mappedProvider = NotificationQueueMapping.TryGetProviderName(queue);
+                    RecordMessageReceived(queue, mappedProvider);
+
+                    activity?.SetTag("messaging.rabbitmq.queue", queue);
+                    activity?.SetTag("appointment.uuid", message.AppointmentUuid);
+                    activity?.SetTag("organization.key", message.OrganizationKey);
+                    activity?.SetTag("scheduled_notification.id", message.ScheduledNotificationId?.ToString());
+
+                    if (mappedProvider is not null)
+                    {
+                        await DispatchAndTrackAsync(message, queue, mappedProvider, stoppingToken);
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "Queue {Queue} is not mapped to a provider; fan-out to all registered providers.",
+                            queue);
+                        await DispatchToAllProvidersAsync(message, queue, stoppingToken);
                     }
 
                     channel.BasicAck(ea.DeliveryTag, multiple: false);
@@ -113,6 +120,7 @@ public class NotificationWorker : BackgroundService
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Failed to process message. Nacking.");
+                    RecordMessageFailed(queue, mappedProvider);
                     channel.BasicNack(ea.DeliveryTag, multiple: false, requeue: false);
                 }
             };
@@ -138,14 +146,18 @@ public class NotificationWorker : BackgroundService
         return Enumerable.Empty<string>();
     }
 
-    private async Task DispatchToAllProvidersAsync(AppointmentMessage message, CancellationToken stoppingToken)
+    private async Task DispatchToAllProvidersAsync(
+        AppointmentMessage message,
+        string queue,
+        CancellationToken stoppingToken)
     {
         foreach (var provider in _providers)
-            await DispatchAndTrackAsync(message, provider.ChannelName, stoppingToken);
+            await DispatchAndTrackAsync(message, queue, provider.ChannelName, stoppingToken);
     }
 
     private async Task DispatchAndTrackAsync(
         AppointmentMessage message,
+        string queue,
         string providerName,
         CancellationToken stoppingToken)
     {
@@ -154,12 +166,47 @@ public class NotificationWorker : BackgroundService
             providerName,
             stoppingToken);
 
+        if (!result.Success)
+            RecordMessageFailed(queue, providerName);
+
         await _deliveryTracking.RecordAsync(
             message,
             providerName,
             result.Success,
             result.ErrorMessage,
             stoppingToken);
+    }
+
+    private static void RecordMessageReceived(string queue, string? provider)
+    {
+        if (provider is not null)
+        {
+            NotificationTelemetry.NotificationMessagesReceived.Add(
+                1,
+                new KeyValuePair<string, object?>("queue", queue),
+                new KeyValuePair<string, object?>("provider", provider));
+            return;
+        }
+
+        NotificationTelemetry.NotificationMessagesReceived.Add(
+            1,
+            new KeyValuePair<string, object?>("queue", queue));
+    }
+
+    private static void RecordMessageFailed(string queue, string? provider)
+    {
+        if (provider is not null)
+        {
+            NotificationTelemetry.NotificationMessagesFailed.Add(
+                1,
+                new KeyValuePair<string, object?>("queue", queue),
+                new KeyValuePair<string, object?>("provider", provider));
+            return;
+        }
+
+        NotificationTelemetry.NotificationMessagesFailed.Add(
+            1,
+            new KeyValuePair<string, object?>("queue", queue));
     }
 
     private async Task WaitForRabbitMqAsync(CancellationToken ct)
