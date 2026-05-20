@@ -1,0 +1,380 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "A Grafana dashboard for the notification module showing appointments, scheduled reminders, and provider delivery status.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": 5,
+  "links": [],
+  "panels": [
+    {
+      "datasource": "${datasource}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "StartDateTime"
+          }
+        ]
+      },
+      "pluginVersion": "10.4.2",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT o.\"Key\" AS organization, a.\"AppointmentUuid\" AS appointment_uuid, a.\"PatientName\" AS patient_name, a.\"StartDateTime\" AS start_time, a.\"Status\" AS status, a.\"Location\" AS location FROM appointments a JOIN organizations o ON o.\"Id\" = a.\"OrganizationId\" WHERE a.\"StartDateTime\" > now() ORDER BY a.\"StartDateTime\" LIMIT 200;",
+          "refId": "A"
+        }
+      ],
+      "title": "Upcoming Appointments",
+      "type": "table"
+    },
+    {
+      "datasource": "${datasource}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "ScheduledSendAt"
+          }
+        ]
+      },
+      "pluginVersion": "10.4.2",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT o.\"Key\" AS organization, a.\"AppointmentUuid\" AS appointment_uuid, sn.\"ReminderType\" AS reminder_type, sn.\"ScheduledSendAt\" AS scheduled_send_at, sn.\"Status\" AS status FROM scheduled_notifications sn JOIN appointments a ON a.\"Id\" = sn.\"AppointmentId\" JOIN organizations o ON o.\"Id\" = sn.\"OrganizationId\" WHERE sn.\"Status\" = 'Pending' ORDER BY sn.\"ScheduledSendAt\" LIMIT 200;",
+          "refId": "A"
+        }
+      ],
+      "title": "Pending Scheduled Notifications",
+      "type": "table"
+    },
+    {
+      "datasource": "${datasource}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "id": 3,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "10.4.2",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT status, count(*) AS count, 'scheduled_notifications' AS source FROM scheduled_notifications GROUP BY status UNION ALL SELECT status, count(*) AS count, 'notification_deliveries' AS source FROM notification_deliveries GROUP BY status ORDER BY source, status;",
+          "refId": "A"
+        }
+      ],
+      "title": "Notification Status Summary",
+      "type": "table"
+    },
+    {
+      "datasource": "${datasource}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      },
+      "id": 4,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Id"
+          }
+        ]
+      },
+      "pluginVersion": "10.4.2",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT d.\"Id\" AS delivery_id, o.\"Key\" AS organization, a.\"AppointmentUuid\" AS appointment_uuid, sn.\"ReminderType\" AS reminder_type, d.\"Provider\" AS provider, d.\"Status\" AS status, d.\"SentAt\" AS sent_at, d.\"FailedAt\" AS failed_at, d.\"ErrorMessage\" AS error_message FROM notification_deliveries d JOIN scheduled_notifications sn ON sn.\"Id\" = d.\"ScheduledNotificationId\" JOIN appointments a ON a.\"Id\" = d.\"AppointmentId\" JOIN organizations o ON o.\"Id\" = d.\"OrganizationId\" ORDER BY d.\"CreatedAt\" DESC LIMIT 100;",
+          "refId": "A"
+        }
+      ],
+      "title": "Latest Provider Deliveries",
+      "type": "table"
+    },
+    {
+      "datasource": "${datasource}",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "id": 5,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "10.4.2",
+      "targets": [
+        {
+          "format": "table",
+          "rawSql": "SELECT d.\"Provider\" AS provider, count(*) AS total_deliveries, sum(CASE WHEN d.\"Status\" = 'Sent' THEN 1 ELSE 0 END) AS sent, sum(CASE WHEN d.\"Status\" = 'Failed' THEN 1 ELSE 0 END) AS failed FROM notification_deliveries d GROUP BY d.\"Provider\" ORDER BY provider;",
+          "refId": "A"
+        }
+      ],
+      "title": "Deliveries by Provider",
+      "type": "table"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": [
+    "notification",
+    "postgres",
+    "appointments",
+    "deliveries",
+    "reminders",
+    "openmrs",
+    "dashboard"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": "grafana-postgresql-datasource",
+          "value": "bfmgfsmp6bpj4a"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Postgres datasource",
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "postgres",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": []
+  },
+  "timezone": "browser",
+  "title": "Notification Module",
+  "uid": "notification-module-dashboard",
+  "version": 1,
+  "weekStart": ""
+}
