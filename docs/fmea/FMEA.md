@@ -1,44 +1,256 @@
-# Failure Mode & Effect Analysis (FMEA)
+# FMEA - Communicatiemodule
 
-Per component wordt in kaart gebracht wat er mis kan gaan, wat het gevolg is, wat de oorzaak is en welke maatregel is genomen om de kans of impact te verkleinen.
-
----
-
-## Component: Producer API 
-
-| Failure mode                                          | Effect                                                      | Oorzaak                                                        | Maatregel                                                                                                                                    |
-| ----------------------------------------------------- | ----------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Ongeldige afspraken worden geaccepteerd               | Onnodige notificaties worden aangemaakt en verstuurd        | Geen validatie op verplichte velden of datum in verleden       | Input validatie op `appointmentUuid`, `startDateTime` en `status`; afspraken in het verleden worden genegeerd                          |
-| Afspraak wordt dubbel ingediend                       | Dubbele notificaties naar patiënt                          | OpenMRS stuurt hetzelfde request meerdere keren (retry of bug) | Idempotente verwerking op `appointmentUuid`; bestaande afspraak wordt geüpdatet, niet opnieuw aangemaakt                                  |
-| Scheduler publiceert bericht te laat of helemaal niet | Patiënt ontvangt notificatie niet op tijd of niet          | Poll-interval te hoog (standaard 30s) of scheduler crasht      | Durable `scheduled_notifications` tabel als fallback; scheduler herstart automatisch; status blijft `Pending` tot succesvol gepubliceerd |
-| RabbitMQ tijdelijk niet beschikbaar bij publicatie    | Bericht wordt niet gepubliceerd, notificatie niet verstuurd | RabbitMQ container herstart of netwerkfout                     | `EnsureConnectedWithRetry()` herverbindt automatisch; `Pending`-status in DB zorgt dat scheduler het opnieuw probeert                    |
+Per component kijken we wat er mis kan gaan, wat het gevolg is en hoe we dat hebben opgelost in de code.
 
 ---
 
-## Component: RabbitMQ 
+## Producer API
 
-| Failure mode                                     | Effect                                           | Oorzaak                                           | Maatregel                                                                                           |
-| ------------------------------------------------ | ------------------------------------------------ | ------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Berichten gaan verloren bij herstart             | Notificaties worden nooit verstuurd              | Queues of exchange niet persistent geconfigureerd | Exchange en queues gedeclareerd met `durable: true`; berichten verstuurd met `persistent: true` |
-| RabbitMQ start later op dan Producer of Consumer | Verbindingsfout bij opstarten, module werkt niet | Race condition in Docker Compose opstartvolgorde  | Producer en Consumer bevatten retry-loop (`WaitForRabbitMqAsync`) die elke 3 seconden herprobeert |
+### Ongeldige afspraken worden geaccepteerd
+
+* **Effect:** er worden notificaties aangemaakt voor afspraken die niet kloppen
+* **Oorzaak:** geen validatie op verplichte velden of datum in het verleden
+* **Maatregel:** afspraken in het verleden worden direct genegeerd, reminders die al verstreken zijn ook
+
+```csharp
+// AppointmentIngestionService.cs
+if (startDateTime <= now)
+    return;
+
+var scheduledSendAt = startDateTime.Subtract(definition.OffsetBeforeAppointment);
+if (scheduledSendAt <= now)
+    continue;
+```
 
 ---
 
-## Component: Consumer / Dispatcher
+### Afspraak wordt dubbel ingediend
 
-| Failure mode                                            | Effect                                              | Oorzaak                                                                 | Maatregel                                                                                                                                                           |
-| ------------------------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Provider-API geeft foutmelding of is niet bereikbaar    | Notificatie niet afgeleverd bij patiënt            | Tijdelijke downtime bij SwiftSend / LegacyLink / AsyncFlow / SecurePost | Resultaat wordt gelogd als `Failed` in `notification_deliveries`; status in `scheduled_notifications` wordt `Failed`; zichtbaar in dashboard voor beheerder |
-| Bericht kan niet worden gedeserialiseerd (corrupt JSON) | Bericht wordt verworpen zonder verwerking           | Incompatibele berichtversie of corruptie in queue                       | `BasicNack` met `requeue: false` zodat corrupt bericht niet de queue blokkeert; fout gelogd via `_logger.LogError`                                            |
-| Consumer crasht midden in verwerking                    | Bericht blijft onbevestigd in queue                 | Onverwachte exception, geheugenprobleem of container-herstart           | `autoAck: false` — bericht wordt pas ge-acked na succesvolle verwerking; bij herstart pakt Consumer het bericht opnieuw op uit de queue                          |
-| Verkeerde provider-secrets gebruikt                     | Authenticatiefout bij provider, notificatie mislukt | Fout in omgevingsvariabelen of seed-data bij opstarten                  | Secrets worden bij lege tabel eenmalig versleuteld ingeladen via `SecretsSeed`; AES-256-GCM encryptie; master key alleen via omgevingsvariabele                   |
+* **Effect:** patient krijgt dubbele notificaties
+* **Oorzaak:** OpenMRS stuurt hetzelfde request meerdere keren
+* **Maatregel:** we gebruiken `FOR UPDATE SKIP LOCKED` zodat hetzelfde bericht nooit twee keer wordt opgepakt, ook niet bij meerdere draaiende instances
+
+```sql
+-- NotificationSchedulerWorker.cs
+SELECT "Id" FROM scheduled_notifications
+WHERE "Status" = 'Pending' AND "ScheduledSendAt" <= {now}
+ORDER BY "ScheduledSendAt"
+LIMIT {batchSize}
+FOR UPDATE SKIP LOCKED
+```
 
 ---
 
-## Component: PostgreSQL 
+### Scheduler publiceert een bericht niet of te laat
 
-| Failure mode                                         | Effect                                                             | Oorzaak                                        | Maatregel                                                                                                                                 |
-| ---------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Database tijdelijk niet bereikbaar                   | Afspraken kunnen niet opgeslagen worden; scheduler kan niet pollen | Container herstart, netwerk- of schijffout     | Docker Compose healthcheck zorgt dat Producer en Consumer pas starten als Postgres klaar is; retry-logica in verbinding                   |
-| Patiëntgegevens blijven langer dan 14 dagen bewaard | Schending van privacy-eis uit opdracht                             | Geen automatische opschoning geïmplementeerd  | ⚠️ Nog te implementeren: scheduled job die rijen ouder dan 14 dagen verwijdert uit `appointments` en gerelateerde tabellen            |
-| Gevoelige data terechtkomt in logbestanden           | Privacy-lek in logbestanden                                        | Patiëntgegevens per ongeluk in logs opgenomen | `notification_deliveries` bevat geen direct identificeerbare gegevens; alleen provider, status, tijdstip en `scheduledNotificationId` |
+* **Effect:** patient ontvangt de notificatie niet op tijd
+* **Oorzaak:** scheduler crasht of publicatie naar RabbitMQ mislukt
+* **Maatregel:** status blijft `Pending` tot het echt gelukt is, mislukte publicaties worden automatisch teruggedraaid zodat de scheduler het opnieuw probeert
+
+```csharp
+// NotificationSchedulerWorker.cs
+try
+{
+    _publisher.Publish(message);
+    scheduledNotification.Status = ScheduledNotificationStatuses.Queued;
+}
+catch (Exception ex)
+{
+    _logger.LogError(ex, "Failed to publish; reverting to Pending.");
+    scheduledNotification.Status = ScheduledNotificationStatuses.Pending;
+}
+```
+
+Berichten die te lang in `Publishing` hangen worden ook automatisch teruggezet:
+
+```csharp
+await db.ScheduledNotifications
+    .Where(x => x.Status == "Publishing" && x.UpdatedAt < staleBefore)
+    .ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, "Pending"));
+```
+
+---
+
+### RabbitMQ is tijdelijk niet beschikbaar
+
+* **Effect:** bericht wordt niet gepubliceerd
+* **Oorzaak:** RabbitMQ container herstart of netwerkfout
+* **Maatregel:** `EnsureConnectedWithRetry()` blijft proberen te verbinden totdat het lukt
+
+```csharp
+// RabbitMqPublisher.cs
+private void EnsureConnectedWithRetry(int delayMs = 3000)
+{
+    if (_connection?.IsOpen == true && _channel?.IsOpen == true)
+        return;
+
+    while (true)
+    {
+        try
+        {
+            _connection = _factory.CreateConnection();
+            _channel    = _connection.CreateModel();
+            DeclareTopology();
+            return;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "RabbitMQ unavailable. Retrying in {DelaySeconds}s.", delayMs / 1000);
+            Thread.Sleep(delayMs);
+        }
+    }
+}
+```
+
+---
+
+## RabbitMQ
+
+### Berichten gaan verloren bij een herstart
+
+* **Effect:** notificaties worden nooit verstuurd
+* **Oorzaak:** queues of exchange niet persistent geconfigureerd
+* **Maatregel:** alles wordt durable gedeclareerd en berichten worden persistent verstuurd
+
+```csharp
+// RabbitMqPublisher.cs + NotificationWorker.cs
+channel.ExchangeDeclare(ExchangeName, ExchangeType.Fanout, durable: true);
+channel.QueueDeclare(queue, durable: true, exclusive: false, autoDelete: false);
+
+props.Persistent = true;
+```
+
+---
+
+### RabbitMQ start later op dan de rest
+
+* **Effect:** verbindingsfout bij opstarten
+* **Oorzaak:** race condition in Docker Compose
+* **Maatregel:** zowel Producer als Consumer hebben een retry-loop die elke 3 seconden opnieuw probeert
+
+```csharp
+// NotificationWorker.cs
+while (!ct.IsCancellationRequested)
+{
+    try
+    {
+        _connection = factory.CreateConnection();
+        _logger.LogInformation("Connected to RabbitMQ.");
+        return;
+    }
+    catch (Exception ex)
+    {
+        _logger.LogWarning("RabbitMQ not ready: {Msg}. Retrying in 3s...", ex.Message);
+        await Task.Delay(3000, ct);
+    }
+}
+```
+
+---
+
+## Consumer / Dispatcher
+
+### Provider-API is niet bereikbaar of geeft een fout
+
+* **Effect:** notificatie komt niet aan bij de patient
+* **Oorzaak:** tijdelijke downtime bij SwiftSend, LegacyLink, AsyncFlow of SecurePost
+* **Maatregel:** het resultaat wordt per provider opgeslagen als `Sent` of `Failed` in `notification_deliveries`, zichtbaar in het dashboard
+
+```csharp
+// NotificationWorker.cs
+var result = await _dispatcher.DispatchToProviderAsync(message, providerName, stoppingToken);
+
+await _deliveryTracking.RecordAsync(
+    message,
+    providerName,
+    result.Success,
+    result.ErrorMessage,
+    stoppingToken);
+```
+
+---
+
+### Bericht kan niet worden gelezen (corrupt JSON)
+
+* **Effect:** bericht wordt overgeslagen zonder verwerking
+* **Oorzaak:** corruptie in de queue of incompatibele berichtversie
+* **Maatregel:** `BasicNack` met `requeue: false` zodat het bericht de queue niet blokkeert
+
+```csharp
+// NotificationWorker.cs
+catch (Exception ex)
+{
+    _logger.LogError(ex, "Failed to process message. Nacking.");
+    channel.BasicNack(ea.DeliveryTag, multiple: false, requeue: false);
+}
+```
+
+---
+
+### Consumer crasht midden in een verwerking
+
+* **Effect:** bericht blijft onbevestigd in de queue
+* **Oorzaak:** onverwachte exception of container-herstart
+* **Maatregel:** `autoAck: false` zodat een bericht pas bevestigd wordt na succesvolle verwerking, bij herstart pakt de Consumer het gewoon opnieuw op
+
+```csharp
+// NotificationWorker.cs
+channel.BasicConsume(queue, autoAck: false, consumer: consumer);
+
+// pas na succesvolle verwerking:
+channel.BasicAck(ea.DeliveryTag, multiple: false);
+```
+
+---
+
+### Verkeerde provider-secrets
+
+* **Effect:** authenticatiefout bij provider, notificatie mislukt
+* **Oorzaak:** fout in omgevingsvariabelen of seed-data bij opstarten
+* **Maatregel:** secrets worden versleuteld opgeslagen via AES-256-GCM, de master key komt alleen uit de omgevingsvariabele en staat nooit in de code
+
+```bash
+# .env
+SECRETS_MASTER_KEY_BASE64=<32-byte random key, nooit in code>
+SECRETS_SEED_SWIFTSEND_API_KEY=<provider credential>
+```
+
+---
+
+## PostgreSQL
+
+### Database tijdelijk niet bereikbaar
+
+* **Effect:** afspraken kunnen niet worden opgeslagen, scheduler kan niet pollen
+* **Oorzaak:** container herstart of netwerkfout
+* **Maatregel:** Docker Compose healthcheck zorgt dat Producer en Consumer pas starten als Postgres echt klaar is
+
+```yaml
+# docker-compose.yml
+postgres:
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U notification -d notification"]
+    interval: 5s
+    retries: 10
+
+producer:
+  depends_on:
+    postgres:
+      condition: service_healthy
+```
+
+---
+
+### Patientgegevens blijven langer dan 14 dagen bewaard
+
+* **Effect:** schending van de privacy-eis
+* **Oorzaak:** geen automatische opschoning geimplementeerd
+* **Maatregel:** nog te implementeren - scheduled job die rijen ouder dan 14 dagen verwijdert uit `appointments` en gerelateerde tabellen
+
+---
+
+### Gevoelige data in logbestanden
+
+* **Effect:** privacy-lek in logs
+* **Oorzaak:** patientgegevens per ongeluk gelogd
+* **Maatregel:** `notification_deliveries` slaat nooit naam, telefoonnummer of e-mail op, alleen provider, status, tijdstip en `scheduledNotificationId`
