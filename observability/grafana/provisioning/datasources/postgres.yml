@@ -16,3 +16,17 @@ datasources:
       sslmode: disable
       postgresVersion: 1600
       timescaledb: false
+  - name: prometheus
+    uid: notification-prometheus
+    type: prometheus
+    access: proxy
+    isDefault: false
+    editable: true
+    url: http://prometheus:9090
+  - name: jaeger
+    uid: notification-jaeger
+    type: jaeger
+    access: proxy
+    isDefault: false
+    editable: true
+    url: http://jaeger:16686

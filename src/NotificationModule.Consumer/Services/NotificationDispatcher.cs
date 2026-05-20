@@ -1,5 +1,7 @@
 using NotificationModule.Consumer.Adapters;
+using NotificationModule.Shared.Observability;
 using NotificationModule.Shared.Models;
+using System.Diagnostics;
 
 namespace NotificationModule.Consumer.Services;
 
@@ -89,6 +91,11 @@ public class NotificationDispatcher
         if (provider is null)
             return NotificationDispatchResult.Failed($"Provider '{providerName}' is not registered.", providerName);
 
+        var started = Stopwatch.GetTimestamp();
+        using var activity = NotificationTelemetry.ActivitySource.StartActivity(
+            "consumer.dispatch.provider",
+            ActivityKind.Client);
+
         try
         {
             _logger.LogInformation("Sending via {Channel} for {Uuid}",
@@ -99,14 +106,42 @@ public class NotificationDispatcher
             _logger.LogInformation("{Channel} succeeded for {Uuid}",
                 provider.ChannelName, message.AppointmentUuid);
 
+            activity?.SetTag("provider", provider.ChannelName);
+            activity?.SetTag("appointment.uuid", message.AppointmentUuid);
+            activity?.SetTag("organization.key", message.OrganizationKey);
+            activity?.SetTag("dispatch.status", "success");
+
+            NotificationTelemetry.NotificationDispatches.Add(
+                1,
+                new KeyValuePair<string, object?>("provider", provider.ChannelName),
+                new KeyValuePair<string, object?>("status", "success"));
+            NotificationTelemetry.NotificationDispatchDurationMs.Record(
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+                new KeyValuePair<string, object?>("provider", provider.ChannelName),
+                new KeyValuePair<string, object?>("status", "success"));
+
             return NotificationDispatchResult.Succeeded(provider.ChannelName);
         }
         catch (Exception ex)
         {
+            NotificationTelemetry.NotificationDispatches.Add(
+                1,
+                new KeyValuePair<string, object?>("provider", provider.ChannelName),
+                new KeyValuePair<string, object?>("status", "failed"));
+            NotificationTelemetry.NotificationDispatchDurationMs.Record(
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+                new KeyValuePair<string, object?>("provider", provider.ChannelName),
+                new KeyValuePair<string, object?>("status", "failed"));
+
             _logger.LogError(ex, "{Channel} failed for {Uuid}",
                 provider.ChannelName, message.AppointmentUuid);
 
-                return NotificationDispatchResult.Failed(ex.Message, provider.ChannelName);
+            activity?.SetTag("provider", provider.ChannelName);
+            activity?.SetTag("appointment.uuid", message.AppointmentUuid);
+            activity?.SetTag("organization.key", message.OrganizationKey);
+            activity?.SetTag("dispatch.status", "failed");
+
+            return NotificationDispatchResult.Failed(ex.Message, provider.ChannelName);
         }
     }
 }

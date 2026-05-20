@@ -2,14 +2,19 @@ using System.Text;
 using System.Text.Json;
 using NotificationModule.Consumer.Adapters;
 using NotificationModule.Consumer.Services;
+using NotificationModule.Shared.Observability;
 using NotificationModule.Shared.Models;
+using OpenTelemetry;
+using OpenTelemetry.Context.Propagation;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
+using System.Diagnostics;
 
 namespace NotificationModule.Consumer.Workers;
 
 public class NotificationWorker : BackgroundService
 {
+    private static readonly TextMapPropagator Propagator = Propagators.DefaultTextMapPropagator;
     private const string ExchangeName = "appointment.notifications";
 
     // This worker can listen to multiple provider queues (SwiftSend/SecurePost/LegacyLink/AsyncFlow).
@@ -67,6 +72,17 @@ public class NotificationWorker : BackgroundService
             {
                 try
                 {
+                    var parentContext = Propagator.Extract(
+                        default,
+                        ea.BasicProperties,
+                        ExtractTraceContextFromBasicProperties);
+
+                    Baggage.Current = parentContext.Baggage;
+                    using var activity = NotificationTelemetry.ActivitySource.StartActivity(
+                        "rabbitmq.consume.appointment_notification",
+                        ActivityKind.Consumer,
+                        parentContext.ActivityContext);
+
                     var json = Encoding.UTF8.GetString(ea.Body.ToArray());
                     var message = JsonSerializer.Deserialize<AppointmentMessage>(json,
                         new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
@@ -77,6 +93,10 @@ public class NotificationWorker : BackgroundService
 
                         if (providerName is not null)
                         {
+                            activity?.SetTag("messaging.rabbitmq.queue", queue);
+                            activity?.SetTag("appointment.uuid", message.AppointmentUuid);
+                            activity?.SetTag("organization.key", message.OrganizationKey);
+                            activity?.SetTag("scheduled_notification.id", message.ScheduledNotificationId?.ToString());
                             await DispatchAndTrackAsync(message, providerName, stoppingToken);
                         }
                         else
@@ -102,6 +122,20 @@ public class NotificationWorker : BackgroundService
 
         // Keep alive until cancellation
         await Task.Delay(Timeout.Infinite, stoppingToken);
+    }
+
+    private static IEnumerable<string> ExtractTraceContextFromBasicProperties(IBasicProperties properties, string key)
+    {
+        if (properties.Headers is null || !properties.Headers.TryGetValue(key, out var value))
+            return Enumerable.Empty<string>();
+
+        if (value is byte[] bytes)
+            return [Encoding.UTF8.GetString(bytes)];
+
+        if (value is string str)
+            return [str];
+
+        return Enumerable.Empty<string>();
     }
 
     private async Task DispatchToAllProvidersAsync(AppointmentMessage message, CancellationToken stoppingToken)

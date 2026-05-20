@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using NotificationModule.Consumer.Adapters;
 using NotificationModule.Consumer.Secrets;
+using NotificationModule.Shared.Observability;
 using NotificationModule.Shared.Models;
 using NotificationModule.Shared.Persistence;
+using System.Diagnostics;
 
 namespace NotificationModule.Consumer.Services;
 
@@ -33,6 +35,10 @@ public sealed class DeliveryTrackingService
         string? errorMessage,
         CancellationToken cancellationToken)
     {
+        using var activity = NotificationTelemetry.ActivitySource.StartActivity(
+            "consumer.delivery.record",
+            ActivityKind.Internal);
+
         if (message.ScheduledNotificationId is null)
             return;
 
@@ -78,6 +84,17 @@ public sealed class DeliveryTrackingService
 
         await db.SaveChangesAsync(cancellationToken);
         await UpdateScheduledNotificationStatusAsync(db, scheduledNotification.Id, now, cancellationToken);
+
+        activity?.SetTag("scheduled_notification.id", scheduledNotification.Id.ToString());
+        activity?.SetTag("appointment.uuid", message.AppointmentUuid);
+        activity?.SetTag("organization.key", message.OrganizationKey);
+        activity?.SetTag("provider", provider);
+        activity?.SetTag("delivery.status", success ? "sent" : "failed");
+
+        NotificationTelemetry.DeliveryTrackingWrites.Add(
+            1,
+            new KeyValuePair<string, object?>("provider", provider),
+            new KeyValuePair<string, object?>("status", success ? "sent" : "failed"));
     }
 
     private async Task UpdateScheduledNotificationStatusAsync(

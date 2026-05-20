@@ -14,6 +14,29 @@ Hiermee worden o.a. RabbitMQ, PostgreSQL, FakeComWorld (`comworld`), de producer
 
 **Lokaal (zonder Docker):** zorg dat Postgres draait en zet `SecretsDb:ConnectionString`, `Secrets:MasterKeyBase64` en eventueel `SecretsSeed:*` (of vul de DB handmatig).
 
+## Observability (OpenTelemetry)
+
+De producer en consumer exporteren traces en metrics via OTLP.
+
+- OTLP collector endpoint (default lokaal): `http://localhost:4317`
+- In Docker: producer/consumer sturen naar `http://otel-collector:4317`
+- Grafana: [http://localhost:3000](http://localhost:3000)
+- Jaeger UI: [http://localhost:16686](http://localhost:16686)
+- Prometheus UI: [http://localhost:9090](http://localhost:9090)
+
+Belangrijke metrics:
+
+- `appointments_ingested_total`
+- `scheduled_notifications_created_total`
+- `scheduled_notifications_published_total`
+- `notification_dispatch_total`
+- `notification_dispatch_duration_ms`
+- `delivery_tracking_writes_total`
+- `scheduler_cycle_duration_ms`
+- `scheduler_due_notifications_count`
+
+Zie `OPENTELEMETRY_STEP1_IMPLEMENTATION.md` voor details en DB data-flow analyse.
+
 ## Voorbeeldrequest
 
 De producer exposeert `POST /api/appointments`. Deze endpoint bewaart de afspraak in PostgreSQL en maakt geplande notificatieregels aan voor later. De scheduler in de producer publiceert notificaties naar RabbitMQ zodra ze verzonden moeten worden. De consumer schrijft daarna per provider een delivery-resultaat naar PostgreSQL.

@@ -1,11 +1,16 @@
 using Microsoft.EntityFrameworkCore;
+using NotificationModule.Shared.Observability;
 using NotificationModule.Producer.Services;
 using NotificationModule.Shared.Persistence;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 
 var connectionString = builder.Configuration["NotificationDb:ConnectionString"]
     ?? throw new InvalidOperationException("NotificationDb:ConnectionString is required.");
+var otlpEndpoint = builder.Configuration["OpenTelemetry:Otlp:Endpoint"];
 
 builder.Services.AddControllers();
 builder.Services.AddDbContextFactory<NotificationDbContext>(options =>
@@ -13,6 +18,44 @@ builder.Services.AddDbContextFactory<NotificationDbContext>(options =>
 builder.Services.AddSingleton<RabbitMqPublisher>();
 builder.Services.AddScoped<AppointmentIngestionService>();
 builder.Services.AddHostedService<NotificationSchedulerWorker>();
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource =>
+    {
+        resource.AddService(
+            serviceName: builder.Configuration["OpenTelemetry:ServiceName"] ?? "notification-producer",
+            serviceVersion: typeof(Program).Assembly.GetName().Version?.ToString() ?? "unknown")
+        .AddAttributes(
+        [
+            new KeyValuePair<string, object>("deployment.environment",
+                builder.Configuration["OpenTelemetry:Environment"] ?? builder.Environment.EnvironmentName),
+        ]);
+    })
+    .WithTracing(tracing =>
+    {
+        tracing
+            .AddSource(NotificationTelemetry.ActivitySourceName)
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddOtlpExporter(options =>
+            {
+                if (!string.IsNullOrWhiteSpace(otlpEndpoint))
+                    options.Endpoint = new Uri(otlpEndpoint);
+            });
+    })
+    .WithMetrics(metrics =>
+    {
+        metrics
+            .AddMeter(NotificationTelemetry.MeterName)
+            .AddRuntimeInstrumentation()
+            .AddProcessInstrumentation()
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddOtlpExporter(options =>
+            {
+                if (!string.IsNullOrWhiteSpace(otlpEndpoint))
+                    options.Endpoint = new Uri(otlpEndpoint);
+            });
+    });
 
 var app = builder.Build();
 
