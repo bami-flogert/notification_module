@@ -1,12 +1,10 @@
-
 services:
-
   rabbitmq:
     image: rabbitmq:3.13-management
     container_name: rabbitmq
     ports:
-      - "5672:5672"     # AMQP
-      - "15672:15672"   # Management UI  →  http://localhost:15672  (guest/guest)
+      - "5672:5672" # AMQP
+      - "15672:15672" # Management UI  →  http://localhost:15672  (guest/guest)
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
@@ -34,7 +32,7 @@ services:
     image: ghcr.io/avansict/in2.4-fakecomworld:main
     container_name: comworld
     ports:
-      - "1337:8080"     # Provider docs  →  http://localhost:1337
+      - "1337:8080" # Provider docs  →  http://localhost:1337
 
   producer:
     build:
