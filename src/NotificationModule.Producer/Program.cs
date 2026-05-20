@@ -18,6 +18,8 @@ builder.Services.AddDbContextFactory<NotificationDbContext>(options =>
 builder.Services.AddSingleton<RabbitMqPublisher>();
 builder.Services.AddScoped<AppointmentIngestionService>();
 builder.Services.AddHostedService<NotificationSchedulerWorker>();
+// Basic health checks (DB/RabbitMQ dependency checks can be added later)
+builder.Services.AddHealthChecks();
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource =>
     {
@@ -60,6 +62,8 @@ builder.Services.AddOpenTelemetry()
 var app = builder.Build();
 
 app.MapControllers();
+app.MapHealthChecks("/health");
+app.MapHealthChecks("/ready");
 
 await using (var scope = app.Services.CreateAsyncScope())
 {

@@ -223,6 +223,117 @@
       ],
       "title": "Scheduled Notifications Published Rate",
       "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "notification-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "id": 7,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "rate(notification_delivery_success_total[5m])",
+          "legendFormat": "success_{provider}",
+          "refId": "A"
+        }
+      ],
+      "title": "Delivery Success Rate (by provider)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "notification-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "id": 8,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "rate(notification_delivery_failure_total[5m])",
+          "legendFormat": "failure_{provider}",
+          "refId": "A"
+        }
+      ],
+      "title": "Delivery Failure Rate (by provider)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "notification-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "id": 9,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(notification_end_to_end_latency_seconds_bucket[5m])))",
+          "legendFormat": "end_to_end_p95",
+          "refId": "A"
+        }
+      ],
+      "title": "End-to-end Latency p95 (seconds)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "notification-prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "notifications" },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 32 },
+      "id": 10,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "notification_pending_count",
+          "legendFormat": "pending_count",
+          "refId": "A"
+        }
+      ],
+      "title": "Pending Notifications Count",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "notification-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 40 },
+      "id": 11,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "notification_pending_oldest_seconds",
+          "legendFormat": "oldest_pending_seconds",
+          "refId": "A"
+        }
+      ],
+      "title": "Oldest Pending Notification (seconds)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "notification-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 40 },
+      "id": 12,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "rate(notification_provider_retry_attempts_total[5m])",
+          "legendFormat": "retries_{provider}",
+          "refId": "A"
+        }
+      ],
+      "title": "Provider Retry Attempts Rate",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",

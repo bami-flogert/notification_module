@@ -1,0 +1,38 @@
+groups:
+  - name: notification.rules
+    rules:
+      - alert: NotificationDeliveryFailureSpike
+        expr: increase(notification_delivery_failure_total[5m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Spike in notification delivery failures"
+          description: "delivery failures increased by >5 in the last 5 minutes (instance: {{ $labels.instance }})"
+
+      - alert: HighPendingQueueAge
+        expr: notification_pending_oldest_seconds > 300
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Oldest pending notification too old"
+          description: "Oldest pending notification age is >5 minutes ({{ $value }}s). Check scheduler and consumer."
+
+      - alert: SchedulerStalledWithBacklog
+        expr: (notification_pending_count > 0) and (increase(scheduler_due_notifications_count[5m]) == 0)
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Scheduler stalled while backlog exists"
+          description: "Scheduler has not claimed any due notifications in the last 5 minutes while pending notifications > 0."
+
+      - alert: HighEndToEndLatencyP95
+        expr: histogram_quantile(0.95, sum by (le) (rate(notification_end_to_end_latency_seconds_bucket[5m]))) > 30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High end-to-end latency (p95)"
+          description: "P95 end-to-end latency > 30s."

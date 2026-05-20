@@ -71,6 +71,24 @@ public sealed class NotificationSchedulerWorker : BackgroundService
         await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
         await RequeueStalePublishingNotificationsAsync(db, now, cancellationToken);
 
+        // Update pending queue metrics: count and oldest pending age (seconds)
+        var pendingStats = await db.ScheduledNotifications
+            .Where(x => x.Status == ScheduledNotificationStatuses.Pending && x.ScheduledSendAt <= now)
+            .GroupBy(x => 1)
+            .Select(g => new { Count = g.Count(), Oldest = g.Min(x => x.ScheduledSendAt) })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (pendingStats is null)
+        {
+            NotificationTelemetry.SetPendingMetrics(0, 0);
+        }
+        else
+        {
+            NotificationTelemetry.SetPendingMetrics(
+                pendingStats.Count,
+                (now - pendingStats.Oldest).TotalSeconds);
+        }
+
         var claimedIds = await ClaimDueNotificationIdsAsync(db, now, batchSize, cancellationToken);
         NotificationTelemetry.SchedulerDueNotificationsCount.Add(claimedIds.Count);
         if (claimedIds.Count == 0)

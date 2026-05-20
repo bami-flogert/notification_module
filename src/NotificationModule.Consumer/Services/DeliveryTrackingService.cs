@@ -95,6 +95,54 @@ public sealed class DeliveryTrackingService
             1,
             new KeyValuePair<string, object?>("provider", provider),
             new KeyValuePair<string, object?>("status", success ? "sent" : "failed"));
+
+        // Record success/failure counters with provider and error_type (if failure)
+        if (success)
+        {
+            NotificationTelemetry.DeliverySuccesses.Add(
+                1,
+                new KeyValuePair<string, object?>("provider", provider));
+
+            // End-to-end latency: delivery time minus appointment created time
+            try
+            {
+                var createdAt = scheduledNotification.Appointment?.CreatedAt;
+                if (createdAt.HasValue)
+                {
+                    var latencySeconds = (now - createdAt.Value).TotalSeconds;
+                    if (latencySeconds >= 0)
+                    {
+                        NotificationTelemetry.EndToEndLatencySeconds.Record(
+                            latencySeconds,
+                            new KeyValuePair<string, object?>("provider", provider));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Failed to record end-to-end latency metric.");
+            }
+        }
+        else
+        {
+            var errorType = "unknown";
+            if (!string.IsNullOrEmpty(errorMessage))
+            {
+                if (errorMessage.Contains("timeout", StringComparison.OrdinalIgnoreCase))
+                    errorType = "timeout";
+                else if (errorMessage.Contains("4", StringComparison.OrdinalIgnoreCase))
+                    errorType = "http_4xx";
+                else if (errorMessage.Contains("5", StringComparison.OrdinalIgnoreCase))
+                    errorType = "http_5xx";
+                else
+                    errorType = "other";
+            }
+
+            NotificationTelemetry.DeliveryFailures.Add(
+                1,
+                new KeyValuePair<string, object?>("provider", provider),
+                new KeyValuePair<string, object?>("error_type", errorType));
+        }
     }
 
     private async Task UpdateScheduledNotificationStatusAsync(
