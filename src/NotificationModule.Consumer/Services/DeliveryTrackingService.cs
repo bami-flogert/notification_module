@@ -8,20 +8,13 @@ namespace NotificationModule.Consumer.Services;
 
 public sealed class DeliveryTrackingService
 {
-    private readonly string[] _expectedProviders;
     private readonly IDbContextFactory<SecretsDbContext> _dbFactory;
     private readonly ILogger<DeliveryTrackingService> _logger;
 
     public DeliveryTrackingService(
-        IEnumerable<INotificationProvider> providers,
         IDbContextFactory<SecretsDbContext> dbFactory,
         ILogger<DeliveryTrackingService> logger)
     {
-        _expectedProviders = providers
-            .Select(p => p.ChannelName)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
         _dbFactory = dbFactory;
         _logger = logger;
     }
@@ -90,28 +83,55 @@ public sealed class DeliveryTrackingService
             .Where(x => x.ScheduledNotificationId == scheduledNotificationId)
             .ToListAsync(cancellationToken);
 
+        if (deliveries.Any(x => string.Equals(x.Status, "Sent", StringComparison.OrdinalIgnoreCase)))
+        {
+            var scheduledNotificationSent = await db.ScheduledNotifications
+                .SingleAsync(x => x.Id == scheduledNotificationId, cancellationToken);
+            scheduledNotificationSent.Status = ScheduledNotificationStatuses.Sent;
+            scheduledNotificationSent.UpdatedAt = now;
+            await db.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
         var deliveryByProvider = deliveries.ToDictionary(
             x => x.Provider,
             x => x.Status,
             StringComparer.OrdinalIgnoreCase);
 
         var scheduledNotification = await db.ScheduledNotifications
+            .Include(x => x.Organization)
             .SingleAsync(x => x.Id == scheduledNotificationId, cancellationToken);
 
-        if (_expectedProviders.All(p =>
+        var chain = BuildProviderChain(scheduledNotification.Organization);
+        if (chain.Length == 0)
+            return;
+
+        if (chain.All(p =>
                 deliveryByProvider.TryGetValue(p, out var status)
-                && string.Equals(status, "Sent", StringComparison.OrdinalIgnoreCase)))
-        {
-            scheduledNotification.Status = ScheduledNotificationStatuses.Sent;
-            scheduledNotification.UpdatedAt = now;
-        }
-        else if (deliveries.Any(x => string.Equals(x.Status, "Failed", StringComparison.OrdinalIgnoreCase)))
+                && string.Equals(status, "Failed", StringComparison.OrdinalIgnoreCase)))
         {
             scheduledNotification.Status = ScheduledNotificationStatuses.Failed;
             scheduledNotification.UpdatedAt = now;
+            await db.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    private static string[] BuildProviderChain(OrganizationRecord organization)
+    {
+        var providers = new List<string>();
+        if (!string.IsNullOrWhiteSpace(organization.PreferredProvider))
+            providers.Add(organization.PreferredProvider.Trim());
+
+        if (!string.IsNullOrWhiteSpace(organization.FallbackProviders))
+        {
+            providers.AddRange(organization.FallbackProviders
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
         }
 
-        await db.SaveChangesAsync(cancellationToken);
+        return providers
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static string? Truncate(string? value, int maxLength)

@@ -1,8 +1,11 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using NotificationModule.Consumer.Adapters;
+using NotificationModule.Consumer.Secrets;
 using NotificationModule.Consumer.Services;
 using NotificationModule.Shared.Models;
+using NotificationModule.Shared.Persistence;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
@@ -26,7 +29,8 @@ public class NotificationWorker : BackgroundService
 
     private readonly NotificationDispatcher _dispatcher;
     private readonly DeliveryTrackingService _deliveryTracking;
-    private readonly INotificationProvider[] _providers;
+    private readonly RabbitMqRepublisher _republisher;
+    private readonly IDbContextFactory<SecretsDbContext> _dbFactory;
     private readonly IConfiguration _config;
     private readonly ILogger<NotificationWorker> _logger;
 
@@ -36,13 +40,15 @@ public class NotificationWorker : BackgroundService
     public NotificationWorker(
         NotificationDispatcher dispatcher,
         DeliveryTrackingService deliveryTracking,
-        IEnumerable<INotificationProvider> providers,
+        RabbitMqRepublisher republisher,
+        IDbContextFactory<SecretsDbContext> dbFactory,
         IConfiguration config,
         ILogger<NotificationWorker> logger)
     {
         _dispatcher = dispatcher;
         _deliveryTracking = deliveryTracking;
-        _providers = providers.ToArray();
+        _republisher = republisher;
+        _dbFactory = dbFactory;
         _config = config;
         _logger = logger;
     }
@@ -75,17 +81,10 @@ public class NotificationWorker : BackgroundService
                     {
                         var providerName = NotificationQueueMapping.TryGetProviderName(queue);
 
-                        if (providerName is not null)
-                        {
-                            await DispatchAndTrackAsync(message, providerName, stoppingToken);
-                        }
-                        else
-                        {
-                            _logger.LogWarning(
-                                "Queue {Queue} is not mapped to a provider; fan-out to all registered providers.",
-                                queue);
-                            await DispatchToAllProvidersAsync(message, stoppingToken);
-                        }
+                        if (providerName is null)
+                            throw new InvalidOperationException($"Queue '{queue}' is not mapped to a provider.");
+
+                        await DispatchAndTrackAsync(message, providerName, stoppingToken);
                     }
 
                     channel.BasicAck(ea.DeliveryTag, multiple: false);
@@ -104,28 +103,97 @@ public class NotificationWorker : BackgroundService
         await Task.Delay(Timeout.Infinite, stoppingToken);
     }
 
-    private async Task DispatchToAllProvidersAsync(AppointmentMessage message, CancellationToken stoppingToken)
-    {
-        foreach (var provider in _providers)
-            await DispatchAndTrackAsync(message, provider.ChannelName, stoppingToken);
-    }
-
     private async Task DispatchAndTrackAsync(
         AppointmentMessage message,
         string providerName,
         CancellationToken stoppingToken)
     {
+        var normalized = EnsureAttemptRecorded(message, providerName);
         var result = await _dispatcher.DispatchToProviderAsync(
-            message,
+            normalized,
             providerName,
             stoppingToken);
 
         await _deliveryTracking.RecordAsync(
-            message,
+            normalized,
             providerName,
             result.Success,
             result.ErrorMessage,
             stoppingToken);
+
+        if (!result.Success)
+            await TryRepublishToFallbackAsync(normalized, providerName, stoppingToken);
+    }
+
+    private static AppointmentMessage EnsureAttemptRecorded(AppointmentMessage message, string providerName)
+    {
+        if (!string.IsNullOrWhiteSpace(message.TargetProvider))
+            return message;
+
+        return message with { TargetProvider = providerName };
+    }
+
+    private async Task TryRepublishToFallbackAsync(
+        AppointmentMessage message,
+        string failedProvider,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(message.OrganizationKey))
+            return;
+
+        var tried = ParseProviders(message.TriedProviders);
+        tried.Add(failedProvider);
+
+        await using var db = await _dbFactory.CreateDbContextAsync(ct);
+
+        var organization = await db.Organizations
+            .SingleOrDefaultAsync(x => x.Key == message.OrganizationKey, ct);
+        if (organization is null)
+            return;
+
+        var chain = BuildProviderChain(organization);
+        var next = chain.FirstOrDefault(p => !tried.Contains(p));
+        if (string.IsNullOrWhiteSpace(next))
+            return;
+
+        var updated = message with { TriedProviders = string.Join(",", tried) };
+        _logger.LogWarning(
+            "Provider {FailedProvider} failed for scheduled notification {ScheduledNotificationId}; falling back to {NextProvider}.",
+            failedProvider,
+            message.ScheduledNotificationId,
+            next);
+
+        _republisher.Republish(updated, next);
+    }
+
+    private static HashSet<string> ParseProviders(string? value)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(value))
+            return set;
+
+        foreach (var part in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            set.Add(part);
+
+        return set;
+    }
+
+    private static string[] BuildProviderChain(OrganizationRecord organization)
+    {
+        var providers = new List<string>();
+        if (!string.IsNullOrWhiteSpace(organization.PreferredProvider))
+            providers.Add(organization.PreferredProvider.Trim());
+
+        if (!string.IsNullOrWhiteSpace(organization.FallbackProviders))
+        {
+            providers.AddRange(organization.FallbackProviders
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        }
+
+        return providers
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private async Task WaitForRabbitMqAsync(CancellationToken ct)
@@ -160,13 +228,15 @@ public class NotificationWorker : BackgroundService
     private static void DeclareTopology(IModel channel)
     {
         // Idempotent declarations prevent startup ordering issues between producer and consumer.
-        channel.ExchangeDeclare(ExchangeName, ExchangeType.Fanout, durable: true);
+        channel.ExchangeDeclare(ExchangeName, ExchangeType.Direct, durable: true);
 
-        // Ensure all logical queues exist and are bound to the fanout exchange.
+        // Ensure all logical queues exist and are bound to the direct exchange.
         foreach (var queue in QueueNames)
         {
             channel.QueueDeclare(queue, durable: true, exclusive: false, autoDelete: false);
-            channel.QueueBind(queue, ExchangeName, routingKey: string.Empty);
+            var providerName = NotificationQueueMapping.TryGetProviderName(queue)
+                ?? throw new InvalidOperationException($"Queue '{queue}' is not mapped to a provider.");
+            channel.QueueBind(queue, ExchangeName, routingKey: providerName);
         }
     }
 

@@ -132,6 +132,8 @@ public sealed class AppointmentIngestionService
             Key = key,
             Name = key,
             TimeZone = _configuration["Organizations:Default:TimeZone"] ?? "UTC",
+            PreferredProvider = _configuration["Organizations:Default:PreferredProvider"] ?? "SwiftSend",
+            FallbackProviders = EmptyToNull(_configuration["Organizations:Default:FallbackProviders"]),
             IsEnabled = true,
             CreatedAt = now,
             UpdatedAt = now,

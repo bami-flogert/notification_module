@@ -20,5 +20,8 @@ public record AppointmentMessage
     public string Instructions    { get; init; } = string.Empty;
     public Guid? ScheduledNotificationId { get; init; }
     public string ReminderType    { get; init; } = string.Empty;
+
+    public string TargetProvider  { get; init; } = string.Empty;
+    public string TriedProviders  { get; init; } = string.Empty;
 }
 

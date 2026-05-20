@@ -74,6 +74,7 @@ public sealed class NotificationSchedulerWorker : BackgroundService
         foreach (var scheduledNotification in dueNotifications)
         {
             var appointment = scheduledNotification.Appointment;
+            var organization = scheduledNotification.Organization;
             var message = new AppointmentMessage
             {
                 AppointmentUuid = appointment.AppointmentUuid,
@@ -83,11 +84,13 @@ public sealed class NotificationSchedulerWorker : BackgroundService
                 PatientEmail = appointment.PatientEmail,
                 StartDateTime = appointment.StartDateTime.UtcDateTime,
                 Status = appointment.Status,
-                OrganizationKey = scheduledNotification.Organization.Key,
+                OrganizationKey = organization.Key,
                 Location = appointment.Location ?? string.Empty,
                 Instructions = appointment.Instructions ?? string.Empty,
                 ScheduledNotificationId = scheduledNotification.Id,
                 ReminderType = scheduledNotification.ReminderType,
+                TargetProvider = organization.PreferredProvider,
+                TriedProviders = string.Empty,
             };
 
             try

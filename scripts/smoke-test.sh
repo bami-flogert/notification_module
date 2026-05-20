@@ -18,6 +18,7 @@ echo "==> Waiting for producer HTTP on :5001…"
 for i in {1..60}; do
   code="$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://127.0.0.1:5001/api/appointments" \
     -H "Content-Type: application/json" \
+    -H "X-Api-Key: ${APIKEY_SEED_DEFAULT:-change-me-in-prod}" \
     -d '{}' || true)"
   if [[ "$code" != "000" ]]; then
     break
@@ -32,6 +33,7 @@ fi
 echo "==> POST sample appointment (startDateTime=${START_DATE_TIME})…"
 curl -sS -X POST "http://localhost:5001/api/appointments/default" \
   -H "Content-Type: application/json" \
+  -H "X-Api-Key: ${APIKEY_SEED_DEFAULT:-change-me-in-prod}" \
   -d "{
     \"appointmentUuid\": \"smoke-1\",
     \"organizationKey\": \"default\",

@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging.Abstractions;
-using NotificationModule.Consumer.Adapters;
 using NotificationModule.Consumer.Secrets;
 using NotificationModule.Consumer.Services;
 using NotificationModule.Shared.Models;
@@ -32,7 +31,7 @@ public sealed class DeliveryTrackingServiceTests
     public async Task RecordAsync_marks_scheduled_notification_failed_when_any_provider_fails()
     {
         var (dbFactory, scheduledNotificationId) = await SeedScheduledNotificationAsync();
-        var service = CreateService(dbFactory, AllProviders);
+        var service = CreateService(dbFactory);
         var message = CreateMessage(scheduledNotificationId);
 
         await service.RecordAsync(message, "SwiftSend", success: true, errorMessage: null, CancellationToken.None);
@@ -41,19 +40,18 @@ public sealed class DeliveryTrackingServiceTests
         await using var db = await dbFactory.CreateDbContextAsync();
         var scheduled = await db.ScheduledNotifications.FindAsync(scheduledNotificationId);
 
-        Assert.Equal(ScheduledNotificationStatuses.Failed, scheduled!.Status);
+        Assert.Equal(ScheduledNotificationStatuses.Sent, scheduled!.Status);
     }
 
     [Fact]
-    public async Task RecordAsync_leaves_status_unchanged_until_all_providers_report()
+    public async Task RecordAsync_leaves_status_unchanged_until_provider_chain_is_exhausted()
     {
         var (dbFactory, scheduledNotificationId) = await SeedScheduledNotificationAsync(
             initialStatus: ScheduledNotificationStatuses.Queued);
-        var service = CreateService(dbFactory, AllProviders);
+        var service = CreateService(dbFactory);
         var message = CreateMessage(scheduledNotificationId);
 
-        await service.RecordAsync(message, "SwiftSend", success: true, errorMessage: null, CancellationToken.None);
-        await service.RecordAsync(message, "SecurePost", success: true, errorMessage: null, CancellationToken.None);
+        await service.RecordAsync(message, "SwiftSend", success: false, errorMessage: "boom", CancellationToken.None);
 
         await using var db = await dbFactory.CreateDbContextAsync();
         var scheduled = await db.ScheduledNotifications.FindAsync(scheduledNotificationId);
@@ -61,16 +59,27 @@ public sealed class DeliveryTrackingServiceTests
         Assert.Equal(ScheduledNotificationStatuses.Queued, scheduled!.Status);
     }
 
-    private static DeliveryTrackingService CreateService(
-        IDbContextFactory<SecretsDbContext> dbFactory,
-        string[] providers)
+    [Fact]
+    public async Task RecordAsync_marks_scheduled_notification_failed_when_all_chain_providers_fail()
     {
-        var fakeProviders = providers.Select(name => new FakeProvider(name)).Cast<INotificationProvider>();
-        return new DeliveryTrackingService(
-            fakeProviders,
-            dbFactory,
-            NullLogger<DeliveryTrackingService>.Instance);
+        var (dbFactory, scheduledNotificationId) = await SeedScheduledNotificationAsync(
+            initialStatus: ScheduledNotificationStatuses.Queued);
+        var service = CreateService(dbFactory);
+        var message = CreateMessage(scheduledNotificationId);
+
+        await service.RecordAsync(message, "SwiftSend", success: false, errorMessage: "boom", CancellationToken.None);
+        await service.RecordAsync(message, "SecurePost", success: false, errorMessage: "boom", CancellationToken.None);
+        await service.RecordAsync(message, "LegacyLink", success: false, errorMessage: "boom", CancellationToken.None);
+        await service.RecordAsync(message, "AsyncFlow", success: false, errorMessage: "boom", CancellationToken.None);
+
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var scheduled = await db.ScheduledNotifications.FindAsync(scheduledNotificationId);
+
+        Assert.Equal(ScheduledNotificationStatuses.Failed, scheduled!.Status);
     }
+
+    private static DeliveryTrackingService CreateService(IDbContextFactory<SecretsDbContext> dbFactory) =>
+        new(dbFactory, NullLogger<DeliveryTrackingService>.Instance);
 
     private static async Task<(IDbContextFactory<SecretsDbContext> Factory, Guid ScheduledNotificationId)> SeedScheduledNotificationAsync(
         string initialStatus = ScheduledNotificationStatuses.Publishing)
@@ -86,6 +95,8 @@ public sealed class DeliveryTrackingServiceTests
             Name = "Default",
             TimeZone = "UTC",
             IsEnabled = true,
+            PreferredProvider = "SwiftSend",
+            FallbackProviders = "SecurePost,LegacyLink,AsyncFlow",
             CreatedAt = now,
             UpdatedAt = now,
         };
@@ -137,11 +148,4 @@ public sealed class DeliveryTrackingServiceTests
         ScheduledNotificationId = scheduledNotificationId,
         ReminderType = "1h",
     };
-
-    private sealed class FakeProvider(string channelName) : INotificationProvider
-    {
-        public string ChannelName { get; } = channelName;
-
-        public Task SendAsync(AppointmentMessage message, CancellationToken ct) => Task.CompletedTask;
-    }
 }

@@ -10,6 +10,7 @@ public class NotificationDbContext : DbContext
     }
 
     public DbSet<OrganizationRecord> Organizations => Set<OrganizationRecord>();
+    public DbSet<OrganizationApiKeyRecord> OrganizationApiKeys => Set<OrganizationApiKeyRecord>();
     public DbSet<ProviderSecretRecord> ProviderSecrets => Set<ProviderSecretRecord>();
     public DbSet<AppointmentRecord> Appointments => Set<AppointmentRecord>();
     public DbSet<ScheduledNotificationRecord> ScheduledNotifications => Set<ScheduledNotificationRecord>();
@@ -26,9 +27,27 @@ public class NotificationDbContext : DbContext
             e.Property(x => x.TimeZone).HasMaxLength(100).IsRequired();
             e.Property(x => x.OpenMrsBaseUrl).HasMaxLength(500);
             e.Property(x => x.IsEnabled).IsRequired();
+            e.Property(x => x.PreferredProvider).HasMaxLength(64).IsRequired();
+            e.Property(x => x.FallbackProviders).HasMaxLength(500);
             e.Property(x => x.CreatedAt).IsRequired();
             e.Property(x => x.UpdatedAt).IsRequired();
             e.HasIndex(x => x.Key).IsUnique();
+        });
+
+        modelBuilder.Entity<OrganizationApiKeyRecord>(e =>
+        {
+            e.ToTable("organization_api_keys");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Salt).IsRequired();
+            e.Property(x => x.KeyHash).IsRequired();
+            e.Property(x => x.IsEnabled).IsRequired();
+            e.Property(x => x.CreatedAt).IsRequired();
+            e.Property(x => x.UpdatedAt).IsRequired();
+            e.HasIndex(x => x.OrganizationId);
+            e.HasOne(x => x.Organization)
+                .WithMany(x => x.ApiKeys)
+                .HasForeignKey(x => x.OrganizationId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ProviderSecretRecord>(e =>

@@ -22,6 +22,7 @@ Voorbeeld met `curl`:
 
 ```bash
 curl -X POST http://localhost:5001/api/appointments \
+  -H "X-Api-Key: change-me-in-prod" \
   -H "Content-Type: application/json" \
   -d '{
     "appointmentUuid": "demo-1",
@@ -56,6 +57,7 @@ Zie [`APPOINTMENT_ENDPOINT.md`](APPOINTMENT_ENDPOINT.md) voor uitleg over organi
 |--------------------|------|
 | `SECRETS_MASTER_KEY_BASE64` | 32 bytes random key, Base64 → `Secrets__MasterKeyBase64` in de container |
 | `SECRETS_SEED_*` | Eénmalige seed als `provider_secrets` nog leeg is (zie `env.example`) |
+| `APIKEY_SEED_DEFAULT` | Eénmalige seed voor `POST /api/appointments` auth (wordt gehashed opgeslagen) |
 | `POSTGRES_PASSWORD` | Wachtwoord voor gebruiker `notification` (DB + connection string) |
 
 Gebruik in productie een sterke master key (`openssl rand -base64 32`) en roteer/reseed volgens jullie beveiligingsbeleid.

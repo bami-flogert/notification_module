@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using NotificationModule.Producer.Security;
 using NotificationModule.Producer.Services;
 using NotificationModule.Shared.Persistence;
 
@@ -12,6 +13,8 @@ builder.Services.AddDbContextFactory<NotificationDbContext>(options =>
     options.UseNpgsql(connectionString));
 builder.Services.AddSingleton<RabbitMqPublisher>();
 builder.Services.AddScoped<AppointmentIngestionService>();
+builder.Services.AddSingleton<OrganizationApiKeyService>();
+builder.Services.AddScoped<AppointmentApiKeyAuthFilter>();
 builder.Services.AddHostedService<NotificationSchedulerWorker>();
 
 var app = builder.Build();
@@ -23,6 +26,12 @@ await using (var scope = app.Services.CreateAsyncScope())
     var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<NotificationDbContext>>();
     await using var db = await dbFactory.CreateDbContextAsync();
     await db.Database.MigrateAsync();
+
+    var apiKeys = scope.ServiceProvider.GetRequiredService<OrganizationApiKeyService>();
+    var defaultOrgKey = app.Configuration["Organizations:Default:Key"] ?? "default";
+    var seedKey = app.Configuration["ApiKeys:Seed:Default"];
+    if (!string.IsNullOrWhiteSpace(seedKey))
+        await apiKeys.EnsureSeededAsync(defaultOrgKey, seedKey, CancellationToken.None);
 }
 
 var publisher = app.Services.GetRequiredService<RabbitMqPublisher>();

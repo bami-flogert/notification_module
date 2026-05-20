@@ -26,6 +26,7 @@ builder.Services.AddSingleton<INotificationProvider, AsyncFlowProvider>();
 
 builder.Services.AddSingleton<NotificationDispatcher>();
 builder.Services.AddSingleton<DeliveryTrackingService>();
+builder.Services.AddSingleton<RabbitMqRepublisher>();
 builder.Services.AddHostedService<NotificationWorker>();
 
 var host = builder.Build();
@@ -35,5 +36,8 @@ using (var scope = host.Services.CreateScope())
     var initializer = scope.ServiceProvider.GetRequiredService<SecretsInitializer>();
     await initializer.InitializeAsync(CancellationToken.None);
 }
+
+var republisher = host.Services.GetRequiredService<RabbitMqRepublisher>();
+republisher.Initialize();
 
 await host.RunAsync();

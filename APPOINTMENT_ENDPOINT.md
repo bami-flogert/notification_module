@@ -9,6 +9,14 @@ POST /api/appointments
 POST /api/appointments/{organizationKey}
 ```
 
+## Authentication
+
+Requests must include an API key header:
+
+- `X-Api-Key: <per-organization api key>`
+
+The local demo seeds a default API key from `APIKEY_SEED_DEFAULT` (see `env.example`). In production, rotate keys and never store plaintext keys in code.
+
 The organization can be supplied in one of three ways:
 
 - Route: `POST /api/appointments/demo-hospital`
@@ -21,6 +29,7 @@ If none is supplied, the service uses the configured default organization from `
 
 ```bash
 curl -X POST http://localhost:5001/api/appointments/demo-hospital \
+  -H "X-Api-Key: change-me-in-prod" \
   -H "Content-Type: application/json" \
   -d '{
     "appointmentUuid": "openmrs-appointment-123",
@@ -61,7 +70,12 @@ Reminder rows are only created when their scheduled send time is still in the fu
 
 The scheduler runs inside the producer. It atomically claims `Pending` rows where `ScheduledSendAt <= now` (PostgreSQL `FOR UPDATE SKIP LOCKED`), publishes each message to RabbitMQ, and only then marks the row as `Queued`. Failed publishes revert the row to `Pending` for retry.
 
-The consumer receives the RabbitMQ message through each provider queue and writes one row per provider to `notification_deliveries`. Each row is marked `Sent` or `Failed`. When all providers succeed, the scheduled notification is marked `Sent`; if any provider fails, it is marked `Failed`.
+The scheduler publishes each message to **one** provider queue based on the organization’s configured provider policy. The consumer writes one delivery row per attempted provider to `notification_deliveries`.
+
+If a provider attempt fails, the consumer republishes the message to the next fallback provider (if configured). The scheduled notification is marked:
+
+- `Sent` when **any** provider succeeds
+- `Failed` only when the preferred+fallback chain is exhausted
 
 When an existing appointment is updated, old pending notifications are marked `Cancelled` and new future pending notifications are created. When the appointment status is `Cancelled` or `Canceled`, all pending notifications are cancelled.
 
