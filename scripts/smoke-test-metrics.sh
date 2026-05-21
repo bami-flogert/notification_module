@@ -87,26 +87,47 @@ curl -sS -X POST "http://127.0.0.1:5001/api/appointments/default" \
   -d "$APPOINTMENT_JSON"
 echo
 
-echo "==> Waiting for delivery and consumer metrics in Prometheus"
+echo "==> Waiting for ingest metric (soon after POST)"
+ingest_value=0
+for i in {1..12}; do
+  ingest_payload="$(query_prometheus 'increase(appointments_ingested_total[5m])')"
+  ingest_value="$(printf '%s' "$ingest_payload" | metric_value)"
+  echo "  ingest attempt $i: increase=$ingest_value"
+  if awk "BEGIN {exit !($ingest_value > 0)}" >/dev/null 2>&1; then
+    echo "==> Ingest metric observed"
+    break
+  fi
+  sleep 5
+done
+
+if ! awk "BEGIN {exit !($ingest_value > 0)}" >/dev/null 2>&1; then
+  echo "==> Smoke metrics test failed: ingest=$ingest_value (expected soon after POST)"
+  exit 1
+fi
+
+echo "==> Waiting for scheduler pipeline metrics (dispatch, delivery, received)"
+dispatch_value=0
 delivery_value=0
 received_value=0
 for i in {1..48}; do
+  dispatch_payload="$(query_prometheus 'increase(notification_dispatch_dispatches_total[5m])')"
+  dispatch_value="$(printf '%s' "$dispatch_payload" | metric_value)"
   delivery_payload="$(query_prometheus 'increase(notification_delivery_success_deliveries_total[5m])')"
   delivery_value="$(printf '%s' "$delivery_payload" | metric_value)"
   received_payload="$(query_prometheus 'increase(notification_messages_received_total[5m])')"
   received_value="$(printf '%s' "$received_payload" | metric_value)"
-  echo "  attempt $i: delivery_success_increase=$delivery_value messages_received_increase=$received_value"
-  if awk "BEGIN {exit !($delivery_value > 0 && $received_value > 0)}" >/dev/null 2>&1; then
-    echo "==> Delivery and received metrics observed"
+  echo "  pipeline attempt $i: dispatch=$dispatch_value delivery=$delivery_value received=$received_value"
+  if awk "BEGIN {exit !($dispatch_value > 0 && $delivery_value > 0 && $received_value > 0)}" >/dev/null 2>&1; then
+    echo "==> Pipeline metrics observed (dispatch, delivery, received)"
     break
   fi
   sleep 15
 done
 
-if awk "BEGIN {exit !($delivery_value > 0 && $received_value > 0)}" >/dev/null 2>&1; then
-  echo "==> Smoke metrics test passed"
+if awk "BEGIN {exit !($dispatch_value > 0 && $delivery_value > 0 && $received_value > 0)}" >/dev/null 2>&1; then
+  echo "==> Smoke metrics test passed (ingest=$ingest_value dispatch=$dispatch_value delivery=$delivery_value received=$received_value)"
   exit 0
 fi
 
-echo "==> Smoke metrics test failed: delivery_success=$delivery_value messages_received=$received_value"
+echo "==> Smoke metrics test failed: ingest=$ingest_value dispatch=$dispatch_value delivery=$delivery_value received=$received_value"
 exit 1

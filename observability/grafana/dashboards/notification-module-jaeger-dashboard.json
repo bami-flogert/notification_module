@@ -15,6 +15,7 @@
       }
     ]
   },
+  "description": "Recent traces by service. Click a trace ID to open detail. For tag search (e.g. appointment.uuid) and full span view, use Jaeger UI at http://localhost:16686.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
@@ -25,6 +26,28 @@
         "type": "jaeger",
         "uid": "notification-jaeger"
       },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
       "gridPos": {
         "h": 12,
         "w": 24,
@@ -33,24 +56,59 @@
       },
       "id": 1,
       "options": {
-        "showTime": true,
-        "showTags": true,
-        "showLogs": true
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": ["sum"],
+          "show": false
+        },
+        "showHeader": true
       },
+      "pluginVersion": "10.4.2",
       "targets": [
         {
-          "query": "service=notification-producer",
+          "datasource": {
+            "type": "jaeger",
+            "uid": "notification-jaeger"
+          },
+          "limit": 20,
+          "operation": "",
           "queryType": "search",
-          "refId": "A"
+          "refId": "A",
+          "service": "notification-producer",
+          "tags": ""
         }
       ],
-      "title": "Producer Traces",
-      "type": "traces"
+      "title": "Producer Traces (recent)",
+      "type": "table"
     },
     {
       "datasource": {
         "type": "jaeger",
         "uid": "notification-jaeger"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
       },
       "gridPos": {
         "h": 12,
@@ -60,19 +118,32 @@
       },
       "id": 2,
       "options": {
-        "showTime": true,
-        "showTags": true,
-        "showLogs": true
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": ["sum"],
+          "show": false
+        },
+        "showHeader": true
       },
+      "pluginVersion": "10.4.2",
       "targets": [
         {
-          "query": "service=notification-consumer",
+          "datasource": {
+            "type": "jaeger",
+            "uid": "notification-jaeger"
+          },
+          "limit": 20,
+          "operation": "",
           "queryType": "search",
-          "refId": "A"
+          "refId": "A",
+          "service": "notification-consumer",
+          "tags": ""
         }
       ],
-      "title": "Consumer Traces",
-      "type": "traces"
+      "title": "Consumer Traces (recent)",
+      "type": "table"
     }
   ],
   "refresh": "30s",
@@ -92,6 +163,6 @@
   "timezone": "browser",
   "title": "Notification Module - Jaeger Traces",
   "uid": "notification-module-jaeger",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

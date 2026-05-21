@@ -35,15 +35,17 @@ Belangrijke metrics:
 - `scheduler_cycle_duration_ms`
 - `scheduler_due_notifications_count`
 
+In Prometheus and Grafana, OpenTelemetry may suffix exported names (for example `notification_dispatch_dispatches_total` instead of `notification_dispatch_total`). The provisioned Prometheus dashboard uses the exported names; see [`docs/ADMIN_MONITORING.md`](docs/ADMIN_MONITORING.md).
+
 Provisioned dashboards:
 
 - `Notification Module` (PostgreSQL operationeel overzicht)
 - `Notification Module - Prometheus Metrics`
 - `Notification Module - Jaeger Traces`
 
-Zie [`OBSERVABILITY_GAP_ANALYSIS_AND_FIX_PLAN.md`](OBSERVABILITY_GAP_ANALYSIS_AND_FIX_PLAN.md) voor de volledige observability-audit, gap-analyse en geprioriteerde fix-backlog. Zie [`DASHBOARD_DATABASE.md`](DASHBOARD_DATABASE.md) voor DB data-flow en dashboard-SQL.
+Zie [`OBSERVABILITY_GAP_ANALYSIS_AND_FIX_PLAN.md`](OBSERVABILITY_GAP_ANALYSIS_AND_FIX_PLAN.md) voor de volledige observability-audit, gap-analyse en geprioriteerde fix-backlog. Zie [`OBSERVABILITY_DASHBOARD_CONSIDERATIONS.md`](OBSERVABILITY_DASHBOARD_CONSIDERATIONS.md) voor dashboard-onderzoek en fix-opties. Zie [`DASHBOARD_DATABASE.md`](DASHBOARD_DATABASE.md) voor DB data-flow en dashboard-SQL.
 
-Admin monitoring (Engels): [`docs/ADMIN_MONITORING.md`](docs/ADMIN_MONITORING.md). Sprint B verificatie: [`docs/SPRINT_B_INSPECTION.md`](docs/SPRINT_B_INSPECTION.md).
+Admin monitoring (Engels): [`docs/ADMIN_MONITORING.md`](docs/ADMIN_MONITORING.md). Sprint B verificatie: [`docs/SPRINT_B_INSPECTION.md`](docs/SPRINT_B_INSPECTION.md). Sprint C observability sign-off: [`docs/SPRINT_C_INSPECTION.md`](docs/SPRINT_C_INSPECTION.md).
 
 Health endpoints: producer `http://localhost:5001/health` (liveness) en `/ready` (Postgres + RabbitMQ); consumer `http://localhost:5002/health` en `/ready`.
 

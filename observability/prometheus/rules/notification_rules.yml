@@ -2,7 +2,7 @@ groups:
   - name: notification.rules
     rules:
       - alert: NotificationDeliveryFailureSpike
-        expr: increase(notification_delivery_failure_total[5m]) > 5
+        expr: increase(notification_delivery_failure_deliveries_total[5m]) > 5
         for: 2m
         labels:
           severity: warning
@@ -20,7 +20,7 @@ groups:
           description: "Oldest pending notification age is >5 minutes ({{ $value }}s). Check scheduler and consumer."
 
       - alert: SchedulerStalledWithBacklog
-        expr: (notification_pending_count > 0) and (increase(scheduler_due_notifications_count[5m]) == 0)
+        expr: (notification_pending_count_notifications > 0) and (increase(scheduler_due_notifications_count_total[5m]) == 0)
         for: 3m
         labels:
           severity: critical

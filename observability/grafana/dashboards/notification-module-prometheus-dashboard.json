@@ -148,7 +148,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (provider, status) (rate(notification_dispatch_total[5m]))",
+          "expr": "sum by (provider, status) (rate(notification_dispatch_dispatches_total[5m]))",
           "legendFormat": "{{provider}} {{status}}",
           "refId": "A"
         }
@@ -182,7 +182,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(notification_dispatch_duration_ms_bucket[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(notification_dispatch_duration_ms_milliseconds_bucket[5m])))",
           "legendFormat": "dispatch_p95",
           "refId": "A"
         }
@@ -234,7 +234,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (provider) (rate(notification_delivery_success_total[5m]))",
+          "expr": "sum by (provider) (rate(notification_delivery_success_deliveries_total[5m]))",
           "legendFormat": "{{provider}}",
           "refId": "A"
         }
@@ -252,7 +252,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (provider) (rate(notification_delivery_failure_total[5m]))",
+          "expr": "sum by (provider) (rate(notification_delivery_failure_deliveries_total[5m]))",
           "legendFormat": "{{provider}}",
           "refId": "A"
         }
@@ -291,7 +291,7 @@
       },
       "targets": [
         {
-          "expr": "notification_pending_count",
+          "expr": "notification_pending_count_notifications",
           "legendFormat": "pending_count",
           "refId": "A"
         }
@@ -351,6 +351,96 @@
         }
       ],
       "title": "Messages Failed Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "notification-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 56 },
+      "id": 14,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "rate(scheduled_notifications_created_total[5m])",
+          "legendFormat": "scheduled_created",
+          "refId": "A"
+        }
+      ],
+      "title": "Scheduled Notifications Created Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "notification-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 56 },
+      "id": 15,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "rate(scheduler_due_notifications_count_total[5m])",
+          "legendFormat": "scheduler_due",
+          "refId": "A"
+        }
+      ],
+      "title": "Scheduler Due Notifications Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "notification-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 64 },
+      "id": 16,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "sum by (provider, status) (rate(delivery_tracking_writes_total[5m]))",
+          "legendFormat": "{{provider}} {{status}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Delivery Tracking Writes Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "notification-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ms" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 64 },
+      "id": 17,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(scheduler_cycle_duration_ms_milliseconds_bucket[5m])))",
+          "legendFormat": "scheduler_cycle_p95",
+          "refId": "A"
+        }
+      ],
+      "title": "Scheduler Cycle Duration p95",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "notification-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 72 },
+      "id": 18,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(notification_provider_retry_attempt_count_attempts_bucket[5m])))",
+          "legendFormat": "retry_count_p95",
+          "refId": "A"
+        }
+      ],
+      "title": "Provider Retry Attempt Count p95",
       "type": "timeseries"
     }
   ],
