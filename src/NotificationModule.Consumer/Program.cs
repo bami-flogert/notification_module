@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using NotificationModule.Consumer.Adapters;
 using NotificationModule.Consumer.Secrets;
 using NotificationModule.Consumer.Services;
@@ -9,7 +11,7 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
-var builder = Host.CreateApplicationBuilder(args);
+var builder = WebApplication.CreateBuilder(args);
 
 var connectionString = builder.Configuration["SecretsDb:ConnectionString"]
     ?? throw new InvalidOperationException("SecretsDb:ConnectionString is required.");
@@ -32,6 +34,12 @@ builder.Services.AddSingleton<INotificationProvider, AsyncFlowProvider>();
 builder.Services.AddSingleton<NotificationDispatcher>();
 builder.Services.AddSingleton<DeliveryTrackingService>();
 builder.Services.AddHostedService<NotificationWorker>();
+
+builder.Services.AddHealthChecks()
+    .AddCheck("live", () => HealthCheckResult.Healthy(), tags: ["live"])
+    .AddNpgSql(connectionString, name: "secrets-db", tags: ["ready"])
+    .AddCheck<RabbitMqHealthCheck>("rabbitmq", tags: ["ready"]);
+
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource =>
     {
@@ -48,6 +56,7 @@ builder.Services.AddOpenTelemetry()
     {
         tracing
             .AddSource(NotificationTelemetry.ActivitySourceName)
+            .AddAspNetCoreInstrumentation()
             .AddHttpClientInstrumentation()
             .AddOtlpExporter(options =>
             {
@@ -61,6 +70,7 @@ builder.Services.AddOpenTelemetry()
             .AddMeter(NotificationTelemetry.MeterName)
             .AddRuntimeInstrumentation()
             .AddProcessInstrumentation()
+            .AddAspNetCoreInstrumentation()
             .AddHttpClientInstrumentation()
             .AddOtlpExporter(options =>
             {
@@ -69,12 +79,21 @@ builder.Services.AddOpenTelemetry()
             });
     });
 
-var host = builder.Build();
+var app = builder.Build();
 
-using (var scope = host.Services.CreateScope())
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("live"),
+});
+app.MapHealthChecks("/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+});
+
+using (var scope = app.Services.CreateScope())
 {
     var initializer = scope.ServiceProvider.GetRequiredService<SecretsInitializer>();
     await initializer.InitializeAsync(CancellationToken.None);
 }
 
-await host.RunAsync();
+await app.RunAsync();

@@ -43,6 +43,10 @@ Provisioned dashboards:
 
 Zie [`OBSERVABILITY_GAP_ANALYSIS_AND_FIX_PLAN.md`](OBSERVABILITY_GAP_ANALYSIS_AND_FIX_PLAN.md) voor de volledige observability-audit, gap-analyse en geprioriteerde fix-backlog. Zie [`DASHBOARD_DATABASE.md`](DASHBOARD_DATABASE.md) voor DB data-flow en dashboard-SQL.
 
+Admin monitoring (Engels): [`docs/ADMIN_MONITORING.md`](docs/ADMIN_MONITORING.md). Sprint B verificatie: [`docs/SPRINT_B_INSPECTION.md`](docs/SPRINT_B_INSPECTION.md).
+
+Health endpoints: producer `http://localhost:5001/health` (liveness) en `/ready` (Postgres + RabbitMQ); consumer `http://localhost:5002/health` en `/ready`.
+
 Metrieken smoke-test (Docker-stack moet draaien of wordt gestart door het script):
 
 ```bash

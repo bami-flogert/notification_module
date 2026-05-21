@@ -4,7 +4,9 @@
 
 **Last reviewed against:** `assignment.md` (English assignment), codebase layout as of May 2026.
 
-**Sprint A status:** Completed 2026-05-20 (P0-1, P0-2, P0-3, P1-1, P2-4). See §5 and §6.1.
+**Sprint A status:** Completed 2026-05-20 (P0-1, P0-2, P0-3, P1-1, P2-4). See §5 and §6.0.
+
+**Sprint B status:** Completed 2026-05-20 (P1-3, P1-4 partial, P1-5, P1-6). See §5 and §6.0.1.
 
 **Related files (current repo):**
 
@@ -17,12 +19,15 @@
 | `DASHBOARD_DATABASE.md` | SQL ideas for Grafana/Postgres dashboards |
 | `src/NotificationModule.Shared/Observability/NotificationTelemetry.cs` | Custom metrics + `ActivitySource` |
 | `src/NotificationModule.Producer/Program.cs` | OTEL + health endpoints (producer) |
-| `src/NotificationModule.Consumer/Program.cs` | OTEL (consumer, no HTTP health) |
+| `src/NotificationModule.Consumer/Program.cs` | OTEL + health endpoints (consumer, port 8080 / host 5002) |
+| `src/NotificationModule.Shared/Observability/RabbitMqHealthCheck.cs` | Shared RabbitMQ readiness probe |
+| `docs/ADMIN_MONITORING.md` | Admin monitoring runbook |
+| `docs/SPRINT_B_INSPECTION.md` | Sprint B verification checklist |
 | `observability/` | Collector, Prometheus, Grafana dashboards, alert rules |
 | `docker-compose.yml` | Full stack including observability services |
 | `scripts/smoke-test-metrics.sh` | Validates metrics appear in Prometheus |
 
-**README observability links:** Points to this document and `DASHBOARD_DATABASE.md`; includes `./scripts/smoke-test-metrics.sh`. `OPENTELEMETRY_STEP1_IMPLEMENTATION.md` is not used (optional alias for Sprint B admin doc).
+**README observability links:** Points to this document, `DASHBOARD_DATABASE.md`, `docs/ADMIN_MONITORING.md`, and `docs/SPRINT_B_INSPECTION.md`; includes `./scripts/smoke-test-metrics.sh`.
 
 ---
 
@@ -77,7 +82,7 @@ OpenMRS / curl
         → Scheduler worker     [spans: producer.scheduler.publish_due]
         → RabbitMqPublisher    [spans + trace inject in message headers]
     → RabbitMQ (fanout + per-provider queues)
-    → Consumer (Worker host) [OTEL traces + metrics, no HTTP health]
+    → Consumer (Web host)     [OTEL traces + metrics, /health, /ready on :5002]
         → NotificationWorker   [trace extract, spans: rabbitmq.consume.*]
         → NotificationDispatcher [spans + dispatch metrics]
         → Providers (SwiftSend, LegacyLink, AsyncFlow, SecurePost) [retry metrics]
@@ -134,7 +139,7 @@ Grafana ← Postgres + Prometheus + Jaeger datasources
 | `notification_provider_retry_attempts_total` | Counter | Yes | All four providers |
 | `notification_provider_retry_attempt_count` | Histogram | Yes | All four providers |
 | `notification_messages_received_total` | Counter | Yes | `NotificationWorker` — tags: `queue`, `provider` (when mapped) |
-| `notification_messages_failed_total` | Counter | Yes | `NotificationWorker` — null deserialize, dispatch failure, unhandled exception; tags: `queue`, `provider` |
+| `notification_messages_failed_total` | Counter | Yes | `NotificationWorker` — tags: `queue`, `provider`, `failure_reason` (`deserialize`, `dispatch`, `exception`) |
 
 ### 2.4 Logging (`ILogger`)
 
@@ -199,15 +204,15 @@ Tables (see `APPOINTMENT_ENDPOINT.md`, `DASHBOARD_DATABASE.md`):
 
 ### 2.9 Health checks
 
-**Producer:** `AddHealthChecks()` with **no** tagged checks; maps `/health` and `/ready` (same empty checks). Comment in code: *"DB/RabbitMQ dependency checks can be added later"*.
+**Producer:** `/health` — liveness (`live` tag only). `/ready` — Npgsql + `RabbitMqHealthCheck` (tag `ready`). Returns 503 when Postgres or RabbitMQ is unreachable.
 
-**Consumer:** No health check registration, no HTTP endpoints (background worker host).
+**Consumer:** Migrated to `WebApplication`; `/health` and `/ready` on port 8080 (host `5002` in Docker). Same dependency checks against `SecretsDb` connection string.
 
 ### 2.10 Retry / fallback (observability angle)
 
 - **Scheduler:** Failed RabbitMQ publish reverts row to `Pending`; stale `Publishing` rows requeued after 5 minutes (`NotificationSchedulerWorker`).
 - **Providers:** Polly-style retry loops in SwiftSend, LegacyLink, AsyncFlow, SecurePost with retry metrics.
-- **RabbitMQ consumer:** On exception or null deserialize → `BasicNack(..., requeue: false)` with `notification_messages_failed_total`; dispatch failures increment failed metric but still **Ack**. No DLQ yet (Sprint B P1-4).
+- **RabbitMQ consumer:** On exception or null deserialize → `BasicNack(..., requeue: false)` with `notification_messages_failed_total` and `failure_reason` tag; dispatch failures use `failure_reason=dispatch` but still **Ack**. **No DLQ** — nacked messages are dropped (documented in `docs/ADMIN_MONITORING.md`).
 
 ### 2.11 HL7 / FHIR (observability angle)
 
@@ -228,8 +233,8 @@ Tables (see `APPOINTMENT_ENDPOINT.md`, `DASHBOARD_DATABASE.md`):
 | `README.md` | OTLP endpoint, Grafana/Jaeger/Prometheus URLs, metric name list, dashboard names |
 | `APPOINTMENT_ENDPOINT.md` | Scheduler retry behavior, delivery tables — no monitoring runbook |
 | `DASHBOARD_DATABASE.md` | SQL for dashboards; ops examples use `PatientUuid` (Sprint A) |
-| Admin integration guide | **Missing** as dedicated doc (Sprint B P1-5) |
-| `OPENTELEMETRY_STEP1_IMPLEMENTATION.md` | **Not used** — superseded by this file + future `docs/ADMIN_MONITORING.md` |
+| `docs/ADMIN_MONITORING.md` | Admin runbook: URLs, dashboards, health, alerts, privacy (Sprint B) |
+| `docs/SPRINT_B_INSPECTION.md` | Short Sprint B verification checklist |
 
 ---
 
@@ -240,16 +245,16 @@ Tables (see `APPOINTMENT_ENDPOINT.md`, `DASHBOARD_DATABASE.md`):
 | Observable via OpenTelemetry | **Mostly met** | Traces + metrics OTLP; no OTEL logs |
 | Real-time dashboard: message status | **Met** | Postgres Grafana dashboard + status summary panel |
 | Real-time dashboard: throughput | **Met** | Prometheus rate panels |
-| Real-time dashboard: errors | **Partial** | Postgres `error_message` column; Prometheus failure rates only |
+| Real-time dashboard: errors | **Met** | Postgres **Recent Delivery Failures (last 1h)** panel + Prometheus failed rates with `failure_reason` |
 | HL7 logging & tracking for audit | **Partial** | DB + traces; not HL7/FHIR message-level audit events |
 | HL7 ACK for delivery/errors | **Not met** | No FHIR ACK; RabbitMQ ack/nack only |
 | HL7 message transformation | **Not met** | Custom JSON model, not FHIR mapping |
-| Queuing/retry observability | **Partial** | Retry metrics; no RabbitMQ queue depth / DLQ metrics |
+| Queuing/retry observability | **Partial** | `failure_reason` on failed messages; no DLQ / queue depth metrics yet |
 | Billing/reporting traceability | **Met (data)** | `notification_deliveries` per org/provider |
 | No sensitive data in logs | **Met (Sprint A)** | No PII in log templates; default Grafana SQL uses `PatientUuid` |
-| Admin docs for monitoring | **Weak** | README + this file; no dedicated runbook yet (Sprint B) |
-| Consumer operability | **Partial** | Failed/received metrics wired; no `/health` yet (Sprint B) |
-| Deep health checks | **Gap** | Producer checks don't verify DB/RabbitMQ |
+| Admin docs for monitoring | **Met (Sprint B)** | `docs/ADMIN_MONITORING.md` + inspection guide |
+| Consumer operability | **Met (Sprint B)** | `/health` and `/ready` on port 5002 |
+| Deep health checks | **Met (Sprint B)** | Producer and consumer `/ready` verify Postgres + RabbitMQ |
 | ADR / C4 / test report | **Not met** | Out of observability code scope but in assignment deliverables |
 
 ---
@@ -327,7 +332,7 @@ Each item includes: **ID**, priority, **problem**, **assignment link**, **sugges
 
 ---
 
-### P1-3 — Producer and consumer health checks with dependencies
+### P1-3 — Producer and consumer health checks with dependencies — **Done (Sprint B, 2026-05-20)**
 
 | Field | Value |
 |-------|--------|
@@ -339,7 +344,7 @@ Each item includes: **ID**, priority, **problem**, **assignment link**, **sugges
 
 ---
 
-### P1-4 — RabbitMQ / consumer failure observability
+### P1-4 — RabbitMQ / consumer failure observability — **Partial (Sprint B, 2026-05-20)**
 
 | Field | Value |
 |-------|--------|
@@ -348,10 +353,11 @@ Each item includes: **ID**, priority, **problem**, **assignment link**, **sugges
 | **Work** | Minimum: metric `notification_messages_failed_total` with `failure_reason` tag (`exception`, `deserialize`, `nack`). Better: declare DLQ, route failed messages, metric `rabbitmq_messages_dead_lettered_total`. Optional: deploy `rabbitmq_exporter` and Grafana panels for queue depth per `notifications.*` queue. |
 | **Files** | `NotificationWorker.cs`, `RabbitMqPublisher.cs` topology, `docker-compose.yml`, prometheus dashboard |
 | **Done when** | Simulated bad JSON increments failed metric; DLQ panel or documented limitation |
+| **Sprint B outcome** | `failure_reason` tag on `notification_messages_failed_total`; DLQ deferred — limitation documented in `docs/ADMIN_MONITORING.md` |
 
 ---
 
-### P1-5 — Admin monitoring & integration documentation
+### P1-5 — Admin monitoring & integration documentation — **Done (Sprint B, 2026-05-20)**
 
 | Field | Value |
 |-------|--------|
@@ -363,7 +369,7 @@ Each item includes: **ID**, priority, **problem**, **assignment link**, **sugges
 
 ---
 
-### P1-6 — Grafana error oversight panel
+### P1-6 — Grafana error oversight panel — **Done (Sprint B, 2026-05-20)**
 
 | Field | Value |
 |-------|--------|
@@ -504,14 +510,16 @@ Each item includes: **ID**, priority, **problem**, **assignment link**, **sugges
 
 **Verification run:** `dotnet build` (producer + consumer), privacy `rg` on `src/` + `observability/grafana/`, `./scripts/smoke-test-metrics.sh` (see §6.1).
 
-### Sprint B — Operability (P1)
+### Sprint B — Operability (P1) — **Completed 2026-05-20**
 
-6. P1-3 — Health checks with dependencies  
-7. P1-4 — RabbitMQ failure metrics (+ optional DLQ)  
-8. P1-6 — Grafana error table panel  
-9. P1-5 — `docs/ADMIN_MONITORING.md`  
+6. ~~P1-3 — Health checks with dependencies~~  
+7. ~~P1-4 — RabbitMQ failure metrics (`failure_reason` tags; DLQ deferred)~~  
+8. ~~P1-6 — Grafana error table panel~~  
+9. ~~P1-5 — `docs/ADMIN_MONITORING.md` + `docs/SPRINT_B_INSPECTION.md`~~  
 
-**Exit criteria:** Admin can detect outage and recent errors without Jaeger.
+**Exit criteria:** Admin can detect outage and recent errors without Jaeger. **Met.**
+
+**Verification run:** `dotnet build`, health/ready curls, `./scripts/smoke-test-metrics.sh`, privacy `rg` (see §6.0.1).
 
 ### Sprint C — OTEL completeness (P1–P2)
 
@@ -532,6 +540,20 @@ Each item includes: **ID**, priority, **problem**, **assignment link**, **sugges
 ## 6. Verification checklist (run after fixes)
 
 Use this after implementing items above; no prior chat context required.
+
+### 6.0.1 Sprint B completed (2026-05-20)
+
+| Check | Result |
+|-------|--------|
+| P1-3 — Producer `/ready` vs `/health` | Pass — `/ready` 503 when Postgres stopped; `/health` 200 |
+| P1-3 — Consumer `:5002/ready` | Pass — 200 when stack healthy |
+| P1-4 — `failure_reason` tag | Pass — wired in `NotificationWorker`; PromQL `sum by (queue, failure_reason)` |
+| P1-4 — DLQ | Deferred — documented in admin guide |
+| P1-5 — Admin docs | Pass — `docs/ADMIN_MONITORING.md`, `docs/SPRINT_B_INSPECTION.md`, README links |
+| P1-6 — Error panel | Pass — **Recent Delivery Failures (last 1h)** on Postgres dashboard |
+| Producer + consumer build | Pass — `dotnet build` Release |
+| Privacy — Grafana SQL | Pass — no `PatientName` in `observability/grafana/` |
+| Smoke test | Partial — script waits on `/ready`; full end-to-end increase requires scheduler window (~10+ min); PromQL uses `notification_delivery_success_deliveries_total` (OTEL export name) |
 
 ### 6.0 Sprint A completed (2026-05-20)
 
@@ -555,8 +577,10 @@ docker compose --env-file env.example up --build -d
 
 | Check | URL | Expected |
 |-------|-----|----------|
-| Producer health | http://localhost:5001/health | 200 when healthy |
-| Producer ready | http://localhost:5001/ready | 200 only when DB+Rabbit OK (after P1-3) |
+| Producer health | http://localhost:5001/health | 200 (liveness only) |
+| Producer ready | http://localhost:5001/ready | 200 when DB+Rabbit OK; 503 when Postgres down |
+| Consumer health | http://localhost:5002/health | 200 (liveness only) |
+| Consumer ready | http://localhost:5002/ready | 200 when DB+Rabbit OK; 503 when Postgres down |
 | Grafana | http://localhost:3000 | Login; three dashboards listed |
 | Jaeger | http://localhost:16686 | Search `notification-producer` / `notification-consumer` |
 | Prometheus | http://localhost:9090 | Targets: `otel-collector` up |
@@ -572,7 +596,7 @@ Query examples (adjust metric names if OTEL export differs):
 ```promql
 rate(appointments_ingested_total[5m])
 sum by (queue) (rate(notification_messages_received_total[5m]))
-sum by (queue) (rate(notification_messages_failed_total[5m]))
+sum by (queue, failure_reason) (rate(notification_messages_failed_total[5m]))
 sum by (provider) (rate(notification_delivery_success_total[5m]))
 notification_pending_count
 sum by (provider, status) (rate(notification_dispatch_total[5m]))
@@ -601,7 +625,7 @@ In Prometheus → Alerts, confirm rules loaded. Trigger test failure spike if sa
 ./scripts/smoke-test-metrics.sh
 ```
 
-Asserts non-zero `increase(notification_delivery_success_total[5m])` and `increase(notification_messages_received_total[5m])` after posting a test appointment. Metric names match C# instruments in `NotificationTelemetry.cs` (OTEL → Prometheus preserves `_total` counters).
+Asserts non-zero `increase(notification_delivery_success_deliveries_total[5m])` and `increase(notification_messages_received_total[5m])` after posting a test appointment. Note: OTEL → Prometheus may suffix counter units (e.g. `_deliveries_total`); query Prometheus label API if names drift.
 
 ---
 
@@ -610,6 +634,7 @@ Asserts non-zero `increase(notification_delivery_success_total[5m])` and `increa
 | Component | Path |
 |-----------|------|
 | Metrics definitions | `src/NotificationModule.Shared/Observability/NotificationTelemetry.cs` |
+| RabbitMQ health check | `src/NotificationModule.Shared/Observability/RabbitMqHealthCheck.cs` |
 | Producer OTEL | `src/NotificationModule.Producer/Program.cs` |
 | Consumer OTEL | `src/NotificationModule.Consumer/Program.cs` |
 | Ingestion spans/metrics | `src/NotificationModule.Producer/Services/AppointmentIngestionService.cs` |
@@ -628,8 +653,8 @@ Asserts non-zero `increase(notification_delivery_success_total[5m])` and `increa
 
 ## 8. Summary for assessors (one paragraph)
 
-The Notification Module implements a credible **OpenTelemetry-based** observability stack: custom traces and metrics across producer and consumer, OTLP export, Jaeger, Prometheus, and Grafana dashboards for **throughput**, **delivery status** (Postgres), and **partial error visibility**. Persistent `notification_deliveries` data supports **billing and audit** (assignment §2). **Sprint A (2026-05-20)** removed PII from logs and default dashboards, wired consumer receive/fail metrics, fixed Prometheus PromQL for labeled series, and corrected the metrics smoke test. Remaining gaps: **no OpenTelemetry logs**, **shallow health checks**, **no HL7/FHIR ACK model**, **incomplete admin runbook**, and **RabbitMQ DLQ/queue-depth observability** (Sprint B+). The prioritized plan in §4 addresses these in order P0 → P3.
+The Notification Module implements a credible **OpenTelemetry-based** observability stack: custom traces and metrics across producer and consumer, OTLP export, Jaeger, Prometheus, and Grafana dashboards for **throughput**, **delivery status** (Postgres), and **error oversight** (recent failures panel + Prometheus `failure_reason`). Persistent `notification_deliveries` data supports **billing and audit** (assignment §2). **Sprint A (2026-05-20)** addressed PII, metric truthfulness, and PromQL. **Sprint B (2026-05-20)** added dependency health checks (`/ready`), consumer HTTP health on port 5002, `failure_reason` on failed message metrics, a Grafana error table, and `docs/ADMIN_MONITORING.md`. Remaining gaps: **no OpenTelemetry logs**, **no DLQ / RabbitMQ queue-depth metrics**, **no HL7/FHIR ACK model**, and **Grafana unified alerting** (Sprint C+). The prioritized plan in §4 addresses these in order P0 → P3.
 
 ---
 
-*Document version: 1.1 — Sprint A completed (compliance & metric truthfulness).*
+*Document version: 1.2 — Sprint B completed (operability: health, failure_reason, error panel, admin docs).*

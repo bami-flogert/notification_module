@@ -177,6 +177,27 @@ join organizations o on o."Id" = d."OrganizationId"
 order by d."UpdatedAt" desc;
 ```
 
+### Recent Delivery Failures (last 1h)
+
+Operational error oversight for administrators (no patient names). Used by the provisioned Grafana panel **Recent Delivery Failures (last 1h)**.
+
+```sql
+select
+  d."FailedAt" as failed_at,
+  o."Key" as organization,
+  a."AppointmentUuid" as appointment_uuid,
+  d."Provider" as provider,
+  left(d."ErrorMessage", 500) as error_message
+from notification_deliveries d
+join scheduled_notifications sn on sn."Id" = d."ScheduledNotificationId"
+join appointments a on a."Id" = d."AppointmentId"
+join organizations o on o."Id" = d."OrganizationId"
+where d."Status" = 'Failed'
+  and d."FailedAt" >= now() - interval '1 hour'
+order by d."FailedAt" desc
+limit 50;
+```
+
 ## Suggested Dashboard Filters
 
 - Organization: filter by `organizations.Key`.

@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using NotificationModule.Shared.Observability;
 using NotificationModule.Producer.Services;
 using NotificationModule.Shared.Persistence;
@@ -18,8 +20,10 @@ builder.Services.AddDbContextFactory<NotificationDbContext>(options =>
 builder.Services.AddSingleton<RabbitMqPublisher>();
 builder.Services.AddScoped<AppointmentIngestionService>();
 builder.Services.AddHostedService<NotificationSchedulerWorker>();
-// Basic health checks (DB/RabbitMQ dependency checks can be added later)
-builder.Services.AddHealthChecks();
+builder.Services.AddHealthChecks()
+    .AddCheck("live", () => HealthCheckResult.Healthy(), tags: ["live"])
+    .AddNpgSql(connectionString, name: "notification-db", tags: ["ready"])
+    .AddCheck<RabbitMqHealthCheck>("rabbitmq", tags: ["ready"]);
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource =>
     {
@@ -62,8 +66,14 @@ builder.Services.AddOpenTelemetry()
 var app = builder.Build();
 
 app.MapControllers();
-app.MapHealthChecks("/health");
-app.MapHealthChecks("/ready");
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("live"),
+});
+app.MapHealthChecks("/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+});
 
 await using (var scope = app.Services.CreateAsyncScope())
 {

@@ -90,7 +90,7 @@ public class NotificationWorker : BackgroundService
 
                     if (message is null)
                     {
-                        RecordMessageFailed(queue, null);
+                        RecordMessageFailed(queue, null, "deserialize");
                         channel.BasicNack(ea.DeliveryTag, multiple: false, requeue: false);
                         return;
                     }
@@ -120,7 +120,7 @@ public class NotificationWorker : BackgroundService
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Failed to process message. Nacking.");
-                    RecordMessageFailed(queue, mappedProvider);
+                    RecordMessageFailed(queue, mappedProvider, "exception");
                     channel.BasicNack(ea.DeliveryTag, multiple: false, requeue: false);
                 }
             };
@@ -167,7 +167,7 @@ public class NotificationWorker : BackgroundService
             stoppingToken);
 
         if (!result.Success)
-            RecordMessageFailed(queue, providerName);
+            RecordMessageFailed(queue, providerName, "dispatch");
 
         await _deliveryTracking.RecordAsync(
             message,
@@ -193,20 +193,22 @@ public class NotificationWorker : BackgroundService
             new KeyValuePair<string, object?>("queue", queue));
     }
 
-    private static void RecordMessageFailed(string queue, string? provider)
+    private static void RecordMessageFailed(string queue, string? provider, string failureReason)
     {
         if (provider is not null)
         {
             NotificationTelemetry.NotificationMessagesFailed.Add(
                 1,
                 new KeyValuePair<string, object?>("queue", queue),
-                new KeyValuePair<string, object?>("provider", provider));
+                new KeyValuePair<string, object?>("provider", provider),
+                new KeyValuePair<string, object?>("failure_reason", failureReason));
             return;
         }
 
         NotificationTelemetry.NotificationMessagesFailed.Add(
             1,
-            new KeyValuePair<string, object?>("queue", queue));
+            new KeyValuePair<string, object?>("queue", queue),
+            new KeyValuePair<string, object?>("failure_reason", failureReason));
     }
 
     private async Task WaitForRabbitMqAsync(CancellationToken ct)

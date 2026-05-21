@@ -345,8 +345,8 @@
       },
       "targets": [
         {
-          "expr": "sum by (queue) (rate(notification_messages_failed_total[5m]))",
-          "legendFormat": "{{queue}}",
+          "expr": "sum by (queue, failure_reason) (rate(notification_messages_failed_total[5m]))",
+          "legendFormat": "{{queue}} {{failure_reason}}",
           "refId": "A"
         }
       ],

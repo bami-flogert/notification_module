@@ -32,6 +32,9 @@ public static class NotificationTelemetry
         "notification_messages_received_total",
         unit: "messages");
 
+    /// <summary>
+    /// Allowed <c>failure_reason</c> tag values: <c>deserialize</c>, <c>dispatch</c>, <c>exception</c>.
+    /// </summary>
     public static readonly Counter<long> NotificationMessagesFailed = Meter.CreateCounter<long>(
         "notification_messages_failed_total",
         unit: "messages");

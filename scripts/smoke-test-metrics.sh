@@ -49,8 +49,11 @@ wait_for_service() {
 echo "==> Starting stack with docker compose"
 docker compose --env-file env.example up --build -d
 
-echo "==> Waiting for producer readiness on http://127.0.0.1:5001/health"
-wait_for_service "http://127.0.0.1:5001/health" "Producer health endpoint"
+echo "==> Waiting for producer readiness on http://127.0.0.1:5001/ready"
+wait_for_service "http://127.0.0.1:5001/ready" "Producer ready endpoint"
+
+echo "==> Waiting for consumer readiness on http://127.0.0.1:5002/ready"
+wait_for_service "http://127.0.0.1:5002/ready" "Consumer ready endpoint"
 
 echo "==> Waiting for Prometheus on http://127.0.0.1:9090"
 wait_for_service "http://127.0.0.1:9090/-/ready" "Prometheus"
@@ -88,7 +91,7 @@ echo "==> Waiting for delivery and consumer metrics in Prometheus"
 delivery_value=0
 received_value=0
 for i in {1..48}; do
-  delivery_payload="$(query_prometheus 'increase(notification_delivery_success_total[5m])')"
+  delivery_payload="$(query_prometheus 'increase(notification_delivery_success_deliveries_total[5m])')"
   delivery_value="$(printf '%s' "$delivery_payload" | metric_value)"
   received_payload="$(query_prometheus 'increase(notification_messages_received_total[5m])')"
   received_value="$(printf '%s' "$received_payload" | metric_value)"
