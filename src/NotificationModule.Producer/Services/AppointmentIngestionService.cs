@@ -40,6 +40,9 @@ public sealed class AppointmentIngestionService
         if (string.IsNullOrWhiteSpace(message.AppointmentUuid))
             throw new ArgumentException("AppointmentUuid is required.", nameof(message));
 
+        if (message.StartDateTime == default)
+            throw new ArgumentException("StartDateTime is required.", nameof(message));
+
         var resolvedOrganizationKey = ResolveOrganizationKey(organizationKey, message);
         var now = DateTimeOffset.UtcNow;
         var startDateTime = NormalizeToUtc(message.StartDateTime);
@@ -54,6 +57,9 @@ public sealed class AppointmentIngestionService
                 cancellationToken);
 
         var created = appointment is null;
+        if (created && startDateTime <= now)
+            throw new ArgumentException("StartDateTime must be in the future for new appointments.", nameof(message));
+
         if (appointment is null)
         {
             appointment = new AppointmentRecord
@@ -78,10 +84,20 @@ public sealed class AppointmentIngestionService
         appointment.RawSourcePayload = JsonSerializer.Serialize(message);
         appointment.UpdatedAt = now;
 
+        IReadOnlyList<ScheduledReminderPlan> scheduledReminders;
         if (IsCancelled(message.Status))
+        {
             CancelPendingNotifications(appointment, now);
+            scheduledReminders = [];
+        }
         else
-            RebuildPendingNotifications(appointment, organization.Id, startDateTime, now);
+        {
+            scheduledReminders = RebuildPendingNotifications(
+                appointment,
+                organization.Id,
+                startDateTime,
+                now);
+        }
 
         await db.SaveChangesAsync(cancellationToken);
 
@@ -91,11 +107,14 @@ public sealed class AppointmentIngestionService
             organization.Key,
             created);
 
+        var pendingCount = appointment.ScheduledNotifications.Count(x => x.Status == PendingStatus);
+
         return new AppointmentIngestionResult(
             organization.Key,
             appointment.AppointmentUuid,
             created,
-            appointment.ScheduledNotifications.Count(x => x.Status == PendingStatus));
+            pendingCount,
+            scheduledReminders);
     }
 
     private string ResolveOrganizationKey(string? organizationKey, AppointmentMessage message)
@@ -144,7 +163,7 @@ public sealed class AppointmentIngestionService
         return organization;
     }
 
-    private static void RebuildPendingNotifications(
+    private static IReadOnlyList<ScheduledReminderPlan> RebuildPendingNotifications(
         AppointmentRecord appointment,
         Guid organizationId,
         DateTimeOffset startDateTime,
@@ -153,13 +172,20 @@ public sealed class AppointmentIngestionService
         CancelPendingNotifications(appointment, now);
 
         if (startDateTime <= now)
-            return;
+            return [];
+
+        var plans = new List<ScheduledReminderPlan>();
+        var timeUntilStart = startDateTime - now;
 
         foreach (var definition in ReminderDefinitions)
         {
-            var scheduledSendAt = startDateTime.Subtract(definition.OffsetBeforeAppointment);
-            if (scheduledSendAt <= now)
+            // Less than 1h until the appointment: only the 1h reminder applies.
+            if (definition.ReminderType == "24h" && timeUntilStart < TimeSpan.FromHours(1))
                 continue;
+
+            var idealSendAt = startDateTime.Subtract(definition.OffsetBeforeAppointment);
+            var isCatchUp = idealSendAt <= now;
+            var scheduledSendAt = isCatchUp ? now : idealSendAt;
 
             appointment.ScheduledNotifications.Add(new ScheduledNotificationRecord
             {
@@ -172,7 +198,14 @@ public sealed class AppointmentIngestionService
                 CreatedAt = now,
                 UpdatedAt = now,
             });
+
+            plans.Add(new ScheduledReminderPlan(
+                definition.ReminderType,
+                scheduledSendAt,
+                isCatchUp));
         }
+
+        return plans;
     }
 
     private static void CancelPendingNotifications(AppointmentRecord appointment, DateTimeOffset now)
@@ -187,7 +220,8 @@ public sealed class AppointmentIngestionService
 
     private static bool IsCancelled(string status) =>
         string.Equals(status, "Cancelled", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(status, "Canceled", StringComparison.OrdinalIgnoreCase);
+        || string.Equals(status, "Canceled", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(status, "cancelled", StringComparison.OrdinalIgnoreCase);
 
     private static DateTimeOffset NormalizeToUtc(DateTime value)
     {
@@ -208,4 +242,5 @@ public sealed record AppointmentIngestionResult(
     string OrganizationKey,
     string AppointmentUuid,
     bool Created,
-    int PendingNotificationCount);
+    int PendingNotificationCount,
+    IReadOnlyList<ScheduledReminderPlan> ScheduledReminders);

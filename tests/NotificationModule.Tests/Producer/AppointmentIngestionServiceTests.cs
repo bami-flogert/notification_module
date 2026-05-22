@@ -17,7 +17,9 @@ public sealed class AppointmentIngestionServiceTests
         var result = await service.IngestAsync(CreateMessage(start), "default", CancellationToken.None);
 
         Assert.Equal(2, result.PendingNotificationCount);
+        Assert.Equal(2, result.ScheduledReminders.Count);
         Assert.True(result.Created);
+        Assert.All(result.ScheduledReminders, r => Assert.False(r.CatchUp));
 
         await using var db = await dbFactory.CreateDbContextAsync();
         var reminders = db.ScheduledNotifications
@@ -48,14 +50,33 @@ public sealed class AppointmentIngestionServiceTests
     }
 
     [Fact]
-    public async Task IngestAsync_creates_only_one_hour_reminder_when_appointment_is_90_minutes_away()
+    public async Task IngestAsync_creates_catch_up_24h_and_scheduled_1h_when_appointment_is_90_minutes_away()
     {
         var (service, dbFactory) = CreateService();
         var start = DateTimeOffset.UtcNow.AddMinutes(90);
 
         var result = await service.IngestAsync(CreateMessage(start.UtcDateTime), "default", CancellationToken.None);
 
+        Assert.Equal(2, result.PendingNotificationCount);
+        Assert.Contains(result.ScheduledReminders, r => r.ReminderType == "24h" && r.CatchUp);
+        Assert.Contains(result.ScheduledReminders, r => r.ReminderType == "1h" && !r.CatchUp);
+
+        await using var db = await dbFactory.CreateDbContextAsync();
+        Assert.Equal(2, db.ScheduledNotifications.Count(sn => sn.Status == ScheduledNotificationStatuses.Pending));
+    }
+
+    [Fact]
+    public async Task IngestAsync_creates_only_one_hour_catch_up_when_appointment_is_30_minutes_away()
+    {
+        var (service, dbFactory) = CreateService();
+        var start = DateTimeOffset.UtcNow.AddMinutes(30);
+
+        var result = await service.IngestAsync(CreateMessage(start.UtcDateTime), "default", CancellationToken.None);
+
         Assert.Equal(1, result.PendingNotificationCount);
+        Assert.Single(result.ScheduledReminders);
+        Assert.Equal("1h", result.ScheduledReminders[0].ReminderType);
+        Assert.True(result.ScheduledReminders[0].CatchUp);
 
         await using var db = await dbFactory.CreateDbContextAsync();
         Assert.Single(db.ScheduledNotifications);
@@ -63,14 +84,55 @@ public sealed class AppointmentIngestionServiceTests
     }
 
     [Fact]
-    public async Task IngestAsync_creates_no_pending_reminders_when_appointment_already_started()
+    public async Task IngestAsync_creates_catch_up_24h_and_scheduled_1h_when_appointment_is_12_hours_away()
     {
         var (service, _) = CreateService();
-        var start = DateTimeOffset.UtcNow.AddMinutes(-5);
+        var start = DateTimeOffset.UtcNow.AddHours(12);
 
         var result = await service.IngestAsync(CreateMessage(start.UtcDateTime), "default", CancellationToken.None);
 
+        Assert.Equal(2, result.PendingNotificationCount);
+        Assert.Contains(result.ScheduledReminders, r => r.ReminderType == "24h" && r.CatchUp);
+        Assert.Contains(result.ScheduledReminders, r => r.ReminderType == "1h" && !r.CatchUp);
+    }
+
+    [Fact]
+    public async Task IngestAsync_creates_no_pending_reminders_when_appointment_already_started()
+    {
+        var (service, _) = CreateService();
+        var message = CreateMessage(DateTimeOffset.UtcNow.AddDays(1).UtcDateTime);
+        await service.IngestAsync(message, "default", CancellationToken.None);
+
+        var updated = message with
+        {
+            StartDateTime = DateTimeOffset.UtcNow.AddMinutes(-5).UtcDateTime,
+        };
+        var result = await service.IngestAsync(updated, "default", CancellationToken.None);
+
         Assert.Equal(0, result.PendingNotificationCount);
+        Assert.Empty(result.ScheduledReminders);
+    }
+
+    [Fact]
+    public async Task IngestAsync_rejects_new_appointment_in_the_past()
+    {
+        var (service, _) = CreateService();
+        var message = CreateMessage(DateTimeOffset.UtcNow.AddMinutes(-10).UtcDateTime);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => service.IngestAsync(message, "default", CancellationToken.None));
+
+        Assert.Contains("future", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task IngestAsync_rejects_missing_start_date_time()
+    {
+        var (service, _) = CreateService();
+        var message = CreateMessage(DateTimeOffset.UtcNow.AddDays(1)) with { StartDateTime = default };
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => service.IngestAsync(message, "default", CancellationToken.None));
     }
 
     [Fact]
@@ -86,6 +148,7 @@ public sealed class AppointmentIngestionServiceTests
         var result = await service.IngestAsync(cancelled, "default", CancellationToken.None);
 
         Assert.Equal(0, result.PendingNotificationCount);
+        Assert.Empty(result.ScheduledReminders);
 
         await using var db = await dbFactory.CreateDbContextAsync();
         Assert.All(

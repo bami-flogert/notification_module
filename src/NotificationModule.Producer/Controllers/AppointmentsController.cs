@@ -64,6 +64,12 @@ public class AppointmentsController : ControllerBase
             appointmentUuid = result.AppointmentUuid,
             organizationKey = result.OrganizationKey,
             pendingNotifications = result.PendingNotificationCount,
+            scheduledReminders = result.ScheduledReminders.Select(r => new
+            {
+                reminderType = r.ReminderType,
+                scheduledSendAt = r.ScheduledSendAt,
+                catchUp = r.CatchUp,
+            }),
         });
     }
 }

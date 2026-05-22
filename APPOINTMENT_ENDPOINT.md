@@ -2,7 +2,9 @@
 
 Appointments are stored in PostgreSQL first. Posting an appointment does not send notifications immediately. The endpoint saves the appointment for an organization and creates pending reminder rows. The scheduler publishes a reminder to RabbitMQ when its `ScheduledSendAt` time is due.
 
-## Endpoint
+**Preferred integration:** FHIR R4 — see [`FHIR_ENDPOINT.md`](FHIR_ENDPOINT.md) (`POST /fhir/Appointment`).
+
+## Endpoint (legacy JSON, deprecated)
 
 ```http
 POST /api/appointments
@@ -46,14 +48,22 @@ curl -X POST http://localhost:5001/api/appointments/demo-hospital \
 
 ## Example Response
 
+HTTP `202 Accepted`:
+
 ```json
 {
   "message": "Appointment saved.",
   "appointmentUuid": "openmrs-appointment-123",
   "organizationKey": "demo-hospital",
-  "pendingNotifications": 2
+  "pendingNotifications": 2,
+  "scheduledReminders": [
+    { "reminderType": "24h", "scheduledSendAt": "2026-05-19T14:30:00+00:00", "catchUp": false },
+    { "reminderType": "1h", "scheduledSendAt": "2026-05-20T13:30:00+00:00", "catchUp": false }
+  ]
 }
 ```
+
+`catchUp: true` means the ideal send time (24h or 1h before the appointment) was already in the past when the appointment was saved; the reminder is scheduled for immediate dispatch on the next scheduler poll.
 
 ## Database Behavior
 
@@ -63,10 +73,21 @@ Appointments are unique per organization, using `(organization_id, appointment_u
 
 The endpoint creates rows in `scheduled_notifications`:
 
-- `24h`, scheduled 24 hours before `startDateTime`
-- `1h`, scheduled 1 hour before `startDateTime`
+- `24h`, ideally 24 hours before `startDateTime`
+- `1h`, ideally 1 hour before `startDateTime`
 
-Reminder rows are only created when their scheduled send time is still in the future. If the appointment already started, no pending notifications are created.
+If the ideal send time is already past but the appointment has not started yet, that reminder is **catch-up scheduled** at the current time so patients still receive a late booking notification. When the appointment is less than 1 hour away, only the `1h` reminder is scheduled (the `24h` reminder is omitted). If the appointment already started, no pending notifications are created.
+
+### Near-term appointments (HTTP always 202 on success)
+
+| Time until `startDateTime` | `pendingNotifications` | Behavior |
+|----------------------------|--------------------------|----------|
+| > 24h | 2 | Both reminders at ideal times |
+| 1h – 24h | 2 | `24h` catch-up now + `1h` at ideal time |
+| < 1h (future) | 1 | `1h` catch-up only (no `24h` reminder) |
+| Already started | 0 | No reminders |
+
+New appointments with `startDateTime` in the past are rejected with HTTP `400`.
 
 The scheduler runs inside the producer. It atomically claims `Pending` rows where `ScheduledSendAt <= now` (PostgreSQL `FOR UPDATE SKIP LOCKED`), publishes each message to RabbitMQ, and only then marks the row as `Queued`. Failed publishes revert the row to `Pending` for retry.
 

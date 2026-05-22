@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using NotificationModule.Producer.Fhir;
 using NotificationModule.Producer.Security;
 using NotificationModule.Producer.Services;
 using NotificationModule.Shared.Persistence;
@@ -13,6 +14,8 @@ builder.Services.AddDbContextFactory<NotificationDbContext>(options =>
     options.UseNpgsql(connectionString));
 builder.Services.AddSingleton<RabbitMqPublisher>();
 builder.Services.AddScoped<AppointmentIngestionService>();
+builder.Services.AddSingleton<FhirAppointmentMapper>();
+builder.Services.AddSingleton<FhirAppointmentValidator>();
 builder.Services.AddSingleton<OrganizationApiKeyService>();
 builder.Services.AddScoped<AppointmentApiKeyAuthFilter>();
 builder.Services.AddHostedService<NotificationSchedulerWorker>();
