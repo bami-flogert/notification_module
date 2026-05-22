@@ -110,7 +110,7 @@ Appointments with a start time in the future.
 select
   o."Key" as organization,
   a."AppointmentUuid",
-  a."PatientName",
+  a."PatientUuid",
   a."StartDateTime",
   a."Status",
   a."Location"
@@ -128,7 +128,7 @@ Appointments that have already started.
 select
   o."Key" as organization,
   a."AppointmentUuid",
-  a."PatientName",
+  a."PatientUuid",
   a."StartDateTime",
   a."Status"
 from appointments a
@@ -145,7 +145,7 @@ Pending reminders that have not been sent yet.
 select
   o."Key" as organization,
   a."AppointmentUuid",
-  a."PatientName",
+  a."PatientUuid",
   sn."ReminderType",
   sn."ScheduledSendAt",
   sn."Status"
@@ -177,6 +177,27 @@ join organizations o on o."Id" = d."OrganizationId"
 order by d."UpdatedAt" desc;
 ```
 
+### Recent Delivery Failures (last 1h)
+
+Operational error oversight for administrators (no patient names). Used by the provisioned Grafana panel **Recent Delivery Failures (last 1h)**.
+
+```sql
+select
+  d."FailedAt" as failed_at,
+  o."Key" as organization,
+  a."AppointmentUuid" as appointment_uuid,
+  d."Provider" as provider,
+  left(d."ErrorMessage", 500) as error_message
+from notification_deliveries d
+join scheduled_notifications sn on sn."Id" = d."ScheduledNotificationId"
+join appointments a on a."Id" = d."AppointmentId"
+join organizations o on o."Id" = d."OrganizationId"
+where d."Status" = 'Failed'
+  and d."FailedAt" >= now() - interval '1 hour'
+order by d."FailedAt" desc
+limit 50;
+```
+
 ## Suggested Dashboard Filters
 
 - Organization: filter by `organizations.Key`.
@@ -186,6 +207,6 @@ order by d."UpdatedAt" desc;
 
 ## Privacy Notes
 
-The `appointments` table contains patient-identifiable data. Dashboard views should restrict access per organization and avoid showing patient details to users who only need operational or billing information.
+The `appointments` table stores patient-identifiable fields (`PatientName`, `PatientPhone`, `PatientEmail`) for outbound messaging. Default admin dashboard SQL in this repo and the provisioned Grafana **Notification Module** dashboard use **`PatientUuid`** and **`AppointmentUuid` only**—not names or contact fields.
 
-For billing/audit views, prefer `notification_deliveries` joined with organization, provider, status, and timestamps. Avoid exposing patient name, phone, email, instructions, or raw payload unless the user role explicitly needs appointment-level detail.
+Restrict dashboard access per organization. For billing/audit views, prefer `notification_deliveries` joined with organization, provider, status, and timestamps. Expose name, phone, email, instructions, or `RawSourcePayload` only in roles that explicitly require clinical appointment detail.

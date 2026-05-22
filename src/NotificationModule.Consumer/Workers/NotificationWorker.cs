@@ -1,11 +1,14 @@
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using NotificationModule.Consumer.Adapters;
-using NotificationModule.Consumer.Secrets;
 using NotificationModule.Consumer.Services;
+using NotificationModule.Consumer.Secrets;
 using NotificationModule.Shared.Models;
+using NotificationModule.Shared.Observability;
 using NotificationModule.Shared.Persistence;
+using OpenTelemetry;
+using OpenTelemetry.Context.Propagation;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
@@ -13,11 +16,8 @@ namespace NotificationModule.Consumer.Workers;
 
 public class NotificationWorker : BackgroundService
 {
+    private static readonly TextMapPropagator Propagator = Propagators.DefaultTextMapPropagator;
     private const string ExchangeName = "appointment.notifications";
-
-    // This worker can listen to multiple provider queues (SwiftSend/SecurePost/LegacyLink/AsyncFlow).
-    // In a multi-channel setup each channel has its own queue. The worker will
-    // create a consumer for each queue and dispatch messages to all providers.
 
     private static readonly string[] QueueNames =
     {
@@ -55,14 +55,10 @@ public class NotificationWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Wait for RabbitMQ to be ready (simple retry loop)
         await WaitForRabbitMqAsync(stoppingToken);
 
-        // Create one consumer per queue so each logical queue can be consumed
-        // concurrently. Each consumer uses the same dispatch logic.
         foreach (var queue in QueueNames)
         {
-            // RabbitMQ .NET channels (IModel) are not thread-safe; use one channel per consumer.
             var channel = _connection!.CreateModel();
             channel.BasicQos(prefetchSize: 0, prefetchCount: 1, global: false);
             _channels.Add(channel);
@@ -71,27 +67,49 @@ public class NotificationWorker : BackgroundService
 
             consumer.Received += async (_, ea) =>
             {
+                string? mappedProvider = null;
                 try
                 {
+                    var parentContext = Propagator.Extract(
+                        default,
+                        ea.BasicProperties,
+                        ExtractTraceContextFromBasicProperties);
+
+                    Baggage.Current = parentContext.Baggage;
+                    using var activity = NotificationTelemetry.ActivitySource.StartActivity(
+                        "rabbitmq.consume.appointment_notification",
+                        ActivityKind.Consumer,
+                        parentContext.ActivityContext);
+
                     var json = Encoding.UTF8.GetString(ea.Body.ToArray());
                     var message = JsonSerializer.Deserialize<AppointmentMessage>(json,
                         new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-                    if (message is not null)
+                    if (message is null)
                     {
-                        var providerName = NotificationQueueMapping.TryGetProviderName(queue);
-
-                        if (providerName is null)
-                            throw new InvalidOperationException($"Queue '{queue}' is not mapped to a provider.");
-
-                        await DispatchAndTrackAsync(message, providerName, stoppingToken);
+                        RecordMessageFailed(queue, null, "deserialize");
+                        channel.BasicNack(ea.DeliveryTag, multiple: false, requeue: false);
+                        return;
                     }
 
+                    mappedProvider = NotificationQueueMapping.TryGetProviderName(queue);
+                    RecordMessageReceived(queue, mappedProvider);
+
+                    activity?.SetTag("messaging.rabbitmq.queue", queue);
+                    activity?.SetTag("appointment.uuid", message.AppointmentUuid);
+                    activity?.SetTag("organization.key", message.OrganizationKey);
+                    activity?.SetTag("scheduled_notification.id", message.ScheduledNotificationId?.ToString());
+
+                    if (mappedProvider is null)
+                        throw new InvalidOperationException($"Queue '{queue}' is not mapped to a provider.");
+
+                    await DispatchAndTrackAsync(message, queue, mappedProvider, stoppingToken);
                     channel.BasicAck(ea.DeliveryTag, multiple: false);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Failed to process message. Nacking.");
+                    RecordMessageFailed(queue, mappedProvider, "exception");
                     channel.BasicNack(ea.DeliveryTag, multiple: false, requeue: false);
                 }
             };
@@ -99,12 +117,26 @@ public class NotificationWorker : BackgroundService
             channel.BasicConsume(queue, autoAck: false, consumer: consumer);
         }
 
-        // Keep alive until cancellation
         await Task.Delay(Timeout.Infinite, stoppingToken);
+    }
+
+    private static IEnumerable<string> ExtractTraceContextFromBasicProperties(IBasicProperties properties, string key)
+    {
+        if (properties.Headers is null || !properties.Headers.TryGetValue(key, out var value))
+            return Enumerable.Empty<string>();
+
+        if (value is byte[] bytes)
+            return [Encoding.UTF8.GetString(bytes)];
+
+        if (value is string str)
+            return [str];
+
+        return Enumerable.Empty<string>();
     }
 
     private async Task DispatchAndTrackAsync(
         AppointmentMessage message,
+        string queue,
         string providerName,
         CancellationToken stoppingToken)
     {
@@ -114,12 +146,16 @@ public class NotificationWorker : BackgroundService
             providerName,
             stoppingToken);
 
+        if (!result.Success)
+            RecordMessageFailed(queue, providerName, "dispatch");
+
         await _deliveryTracking.RecordAsync(
             normalized,
             providerName,
             result.Success,
             result.ErrorMessage,
-            stoppingToken);
+            stoppingToken,
+            result.ErrorType);
 
         if (!result.Success)
             await TryRepublishToFallbackAsync(normalized, providerName, stoppingToken);
@@ -196,6 +232,40 @@ public class NotificationWorker : BackgroundService
             .ToArray();
     }
 
+    private static void RecordMessageReceived(string queue, string? provider)
+    {
+        if (provider is not null)
+        {
+            NotificationTelemetry.NotificationMessagesReceived.Add(
+                1,
+                new KeyValuePair<string, object?>("queue", queue),
+                new KeyValuePair<string, object?>("provider", provider));
+            return;
+        }
+
+        NotificationTelemetry.NotificationMessagesReceived.Add(
+            1,
+            new KeyValuePair<string, object?>("queue", queue));
+    }
+
+    private static void RecordMessageFailed(string queue, string? provider, string failureReason)
+    {
+        if (provider is not null)
+        {
+            NotificationTelemetry.NotificationMessagesFailed.Add(
+                1,
+                new KeyValuePair<string, object?>("queue", queue),
+                new KeyValuePair<string, object?>("provider", provider),
+                new KeyValuePair<string, object?>("failure_reason", failureReason));
+            return;
+        }
+
+        NotificationTelemetry.NotificationMessagesFailed.Add(
+            1,
+            new KeyValuePair<string, object?>("queue", queue),
+            new KeyValuePair<string, object?>("failure_reason", failureReason));
+    }
+
     private async Task WaitForRabbitMqAsync(CancellationToken ct)
     {
         var factory = new ConnectionFactory
@@ -227,10 +297,8 @@ public class NotificationWorker : BackgroundService
 
     private static void DeclareTopology(IModel channel)
     {
-        // Idempotent declarations prevent startup ordering issues between producer and consumer.
         channel.ExchangeDeclare(ExchangeName, ExchangeType.Direct, durable: true);
 
-        // Ensure all logical queues exist and are bound to the direct exchange.
         foreach (var queue in QueueNames)
         {
             channel.QueueDeclare(queue, durable: true, exclusive: false, autoDelete: false);
@@ -244,8 +312,8 @@ public class NotificationWorker : BackgroundService
     {
         foreach (var ch in _channels)
         {
-            try { ch.Close(); } catch { /* ignore */ }
-            try { ch.Dispose(); } catch { /* ignore */ }
+            try { ch.Close(); } catch { }
+            try { ch.Dispose(); } catch { }
         }
         _connection?.Close();
         base.Dispose();

@@ -1,5 +1,7 @@
 using System.Text.Json;
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
+using NotificationModule.Shared.Observability;
 using NotificationModule.Shared.Models;
 using NotificationModule.Shared.Persistence;
 
@@ -35,6 +37,10 @@ public sealed class AppointmentIngestionService
         string? organizationKey,
         CancellationToken cancellationToken)
     {
+        using var activity = NotificationTelemetry.ActivitySource.StartActivity(
+            "producer.appointment.ingest",
+            ActivityKind.Internal);
+
         ArgumentNullException.ThrowIfNull(message);
 
         if (string.IsNullOrWhiteSpace(message.AppointmentUuid))
@@ -108,6 +114,24 @@ public sealed class AppointmentIngestionService
             created);
 
         var pendingCount = appointment.ScheduledNotifications.Count(x => x.Status == PendingStatus);
+        var createdNotificationCount = scheduledReminders.Count;
+
+        activity?.SetTag("organization.key", organization.Key);
+        activity?.SetTag("appointment.uuid", appointment.AppointmentUuid);
+        activity?.SetTag("appointment.created", created);
+        activity?.SetTag("scheduled.notifications.created", createdNotificationCount);
+
+        NotificationTelemetry.AppointmentsIngested.Add(
+            1,
+            new KeyValuePair<string, object?>("organization.key", organization.Key),
+            new KeyValuePair<string, object?>("appointment.created", created));
+
+        if (createdNotificationCount > 0)
+        {
+            NotificationTelemetry.ScheduledNotificationsCreated.Add(
+                createdNotificationCount,
+                new KeyValuePair<string, object?>("organization.key", organization.Key));
+        }
 
         return new AppointmentIngestionResult(
             organization.Key,

@@ -1,0 +1,32 @@
+apiVersion: 1
+
+datasources:
+  - name: grafana-postgresql-datasource
+    uid: bfmgfsmp6bpj4a
+    type: postgres
+    access: proxy
+    isDefault: true
+    editable: true
+    url: postgres:5432
+    user: notification
+    secureJsonData:
+      password: ${POSTGRES_PASSWORD}
+    jsonData:
+      database: notification
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+  - name: prometheus
+    uid: notification-prometheus
+    type: prometheus
+    access: proxy
+    isDefault: false
+    editable: true
+    url: http://prometheus:9090
+  - name: jaeger
+    uid: notification-jaeger
+    type: jaeger
+    access: proxy
+    isDefault: false
+    editable: true
+    url: http://jaeger:16686

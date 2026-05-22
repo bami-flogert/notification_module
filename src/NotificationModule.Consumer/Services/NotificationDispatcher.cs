@@ -1,5 +1,7 @@
 using NotificationModule.Consumer.Adapters;
+using NotificationModule.Shared.Observability;
 using NotificationModule.Shared.Models;
+using System.Diagnostics;
 
 namespace NotificationModule.Consumer.Services;
 
@@ -20,30 +22,8 @@ public class NotificationDispatcher
         _logger    = logger;
     }
 
-    public async Task DispatchAsync(AppointmentMessage message, CancellationToken ct)
-    {
-        var tasks = _providers.Select(async provider =>
-        {
-            try
-            {
-                _logger.LogInformation("Sending via {Channel} for {Uuid}",
-                    provider.ChannelName, message.AppointmentUuid);
-
-                await provider.SendAsync(message, ct);
-
-                _logger.LogInformation("{Channel} succeeded for {Uuid}",
-                    provider.ChannelName, message.AppointmentUuid);
-            }
-            catch (Exception ex)
-            {
-                // Log but don't fail other providers
-                _logger.LogError(ex, "{Channel} failed for {Uuid}",
-                    provider.ChannelName, message.AppointmentUuid);
-            }
-        });
-
-        await Task.WhenAll(tasks);
-    }
+    public Task DispatchAsync(AppointmentMessage message, CancellationToken ct)
+        => DispatchAsync(message, null, ct);
 
     /// <summary>
     /// Dispatch to a single provider identified by channel name (case-insensitive).
@@ -55,27 +35,16 @@ public class NotificationDispatcher
             ? _providers
             : _providers.Where(p => string.Equals(p.ChannelName, channelName, StringComparison.OrdinalIgnoreCase));
 
-        var tasks = targets.Select(async provider =>
+        var tasks = targets.Select(provider => DispatchToProviderAsync(message, provider.ChannelName, ct));
+        var results = await Task.WhenAll(tasks);
+
+        foreach (var result in results.Where(r => !r.Success))
         {
-            try
-            {
-                _logger.LogInformation("Sending via {Channel} for {Uuid}",
-                    provider.ChannelName, message.AppointmentUuid);
-
-                await provider.SendAsync(message, ct);
-
-                _logger.LogInformation("{Channel} succeeded for {Uuid}",
-                    provider.ChannelName, message.AppointmentUuid);
-            }
-            catch (Exception ex)
-            {
-                // Log but don't fail other providers
-                _logger.LogError(ex, "{Channel} failed for {Uuid}",
-                    provider.ChannelName, message.AppointmentUuid);
-            }
-        });
-
-        await Task.WhenAll(tasks);
+            _logger.LogError("Provider {Provider} failed for {Uuid}: {Error}",
+                result.Provider,
+                message.AppointmentUuid,
+                result.ErrorMessage);
+        }
     }
 
     public async Task<NotificationDispatchResult> DispatchToProviderAsync(
@@ -87,7 +56,15 @@ public class NotificationDispatcher
             string.Equals(p.ChannelName, providerName, StringComparison.OrdinalIgnoreCase));
 
         if (provider is null)
-            return NotificationDispatchResult.Failed($"Provider '{providerName}' is not registered.", providerName);
+            return NotificationDispatchResult.Failed(
+                $"Provider '{providerName}' is not registered.",
+                providerName,
+                DeliveryErrorTypes.Other);
+
+        var started = Stopwatch.GetTimestamp();
+        using var activity = NotificationTelemetry.ActivitySource.StartActivity(
+            "consumer.dispatch.provider",
+            ActivityKind.Client);
 
         try
         {
@@ -99,24 +76,62 @@ public class NotificationDispatcher
             _logger.LogInformation("{Channel} succeeded for {Uuid}",
                 provider.ChannelName, message.AppointmentUuid);
 
+            activity?.SetTag("provider", provider.ChannelName);
+            activity?.SetTag("appointment.uuid", message.AppointmentUuid);
+            activity?.SetTag("organization.key", message.OrganizationKey);
+            activity?.SetTag("dispatch.status", "success");
+
+            NotificationTelemetry.NotificationDispatches.Add(
+                1,
+                new KeyValuePair<string, object?>("provider", provider.ChannelName),
+                new KeyValuePair<string, object?>("status", "success"));
+            NotificationTelemetry.NotificationDispatchDurationMs.Record(
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+                new KeyValuePair<string, object?>("provider", provider.ChannelName),
+                new KeyValuePair<string, object?>("status", "success"));
+
             return NotificationDispatchResult.Succeeded(provider.ChannelName);
         }
         catch (Exception ex)
         {
+            NotificationTelemetry.NotificationDispatches.Add(
+                1,
+                new KeyValuePair<string, object?>("provider", provider.ChannelName),
+                new KeyValuePair<string, object?>("status", "failed"));
+            NotificationTelemetry.NotificationDispatchDurationMs.Record(
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+                new KeyValuePair<string, object?>("provider", provider.ChannelName),
+                new KeyValuePair<string, object?>("status", "failed"));
+
             _logger.LogError(ex, "{Channel} failed for {Uuid}",
                 provider.ChannelName, message.AppointmentUuid);
 
-                return NotificationDispatchResult.Failed(ex.Message, provider.ChannelName);
+            activity?.SetTag("provider", provider.ChannelName);
+            activity?.SetTag("appointment.uuid", message.AppointmentUuid);
+            activity?.SetTag("organization.key", message.OrganizationKey);
+            activity?.SetTag("dispatch.status", "failed");
+
+            return NotificationDispatchResult.Failed(
+                ex.Message,
+                provider.ChannelName,
+                DeliveryErrorClassifier.Classify(ex));
         }
     }
 }
 
-public sealed record NotificationDispatchResult(string Provider, bool Success, string? ErrorMessage)
+public sealed record NotificationDispatchResult(
+    string Provider,
+    bool Success,
+    string? ErrorMessage,
+    string? ErrorType = null)
 {
     public static NotificationDispatchResult Succeeded(string provider) =>
         new(provider, true, null);
 
-    public static NotificationDispatchResult Failed(string errorMessage, string provider = "") =>
-        new(provider, false, errorMessage);
+    public static NotificationDispatchResult Failed(
+        string errorMessage,
+        string provider = "",
+        string? errorType = null) =>
+        new(provider, false, errorMessage, errorType ?? DeliveryErrorTypes.Unknown);
 }
 
