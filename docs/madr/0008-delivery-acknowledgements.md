@@ -1,4 +1,4 @@
-## 2. Bevestigingen (ACK) voor notificaties
+## 8. Bevestigingen (ACK) voor notificaties
 
 ### Status
 
