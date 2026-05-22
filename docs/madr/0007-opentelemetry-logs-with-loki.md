@@ -1,4 +1,4 @@
-# 1. OpenTelemetry-logs naar Loki sturen
+# 7. OpenTelemetry-logs naar Loki sturen
 
 
 ## Status
