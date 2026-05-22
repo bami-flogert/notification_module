@@ -125,6 +125,18 @@ services:
         condition: service_started
       jaeger:
         condition: service_started
+      loki:
+        condition: service_started
+
+  loki:
+    image: grafana/loki:2.9.4
+    container_name: notification-loki
+    command: -config.file=/etc/loki/loki-config.yml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.103.1
@@ -138,6 +150,8 @@ services:
       - ./observability/otel/otel-collector-config.yml:/etc/otelcol/config.yaml:ro
     depends_on:
       jaeger:
+        condition: service_started
+      loki:
         condition: service_started
 
   jaeger:
@@ -163,3 +177,4 @@ services:
 volumes:
   postgres_data:
   grafana_data:
+  loki_data:

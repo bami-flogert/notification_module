@@ -1,0 +1,22 @@
+apiVersion: 1
+
+datasources:
+  - name: loki
+    uid: notification-loki
+    type: loki
+    access: proxy
+    isDefault: false
+    editable: true
+    url: http://loki:3100
+    jsonData:
+      derivedFields:
+        - name: TraceID
+          matcherRegex: '"traceid":"([0-9a-f]+)"'
+          url: "$${__value.raw}"
+          datasourceUid: notification-jaeger
+          urlDisplayLabel: View trace in Jaeger
+        - name: TraceID
+          matcherRegex: '"TraceId":"([0-9a-f]+)"'
+          url: "$${__value.raw}"
+          datasourceUid: notification-jaeger
+          urlDisplayLabel: View trace in Jaeger

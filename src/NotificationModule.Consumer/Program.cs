@@ -7,15 +7,13 @@ using NotificationModule.Consumer.Services;
 using NotificationModule.Consumer.Workers;
 using NotificationModule.Shared.Observability;
 using NotificationModule.Shared.Persistence;
-using OpenTelemetry.Metrics;
-using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 
 var connectionString = builder.Configuration["SecretsDb:ConnectionString"]
     ?? throw new InvalidOperationException("SecretsDb:ConnectionString is required.");
-var otlpEndpoint = builder.Configuration["OpenTelemetry:Otlp:Endpoint"];
+
+builder.AddNotificationOpenTelemetry("notification-consumer");
 
 builder.Services.AddDbContextFactory<SecretsDbContext>(options =>
     options.UseNpgsql(
@@ -39,45 +37,6 @@ builder.Services.AddHealthChecks()
     .AddCheck("live", () => HealthCheckResult.Healthy(), tags: ["live"])
     .AddNpgSql(connectionString, name: "secrets-db", tags: ["ready"])
     .AddCheck<RabbitMqHealthCheck>("rabbitmq", tags: ["ready"]);
-
-builder.Services.AddOpenTelemetry()
-    .ConfigureResource(resource =>
-    {
-        resource.AddService(
-            serviceName: builder.Configuration["OpenTelemetry:ServiceName"] ?? "notification-consumer",
-            serviceVersion: typeof(Program).Assembly.GetName().Version?.ToString() ?? "unknown")
-        .AddAttributes(
-        [
-            new KeyValuePair<string, object>("deployment.environment",
-                builder.Configuration["OpenTelemetry:Environment"] ?? builder.Environment.EnvironmentName),
-        ]);
-    })
-    .WithTracing(tracing =>
-    {
-        tracing
-            .AddSource(NotificationTelemetry.ActivitySourceName)
-            .AddAspNetCoreInstrumentation()
-            .AddHttpClientInstrumentation()
-            .AddOtlpExporter(options =>
-            {
-                if (!string.IsNullOrWhiteSpace(otlpEndpoint))
-                    options.Endpoint = new Uri(otlpEndpoint);
-            });
-    })
-    .WithMetrics(metrics =>
-    {
-        metrics
-            .AddMeter(NotificationTelemetry.MeterName)
-            .AddRuntimeInstrumentation()
-            .AddProcessInstrumentation()
-            .AddAspNetCoreInstrumentation()
-            .AddHttpClientInstrumentation()
-            .AddOtlpExporter(options =>
-            {
-                if (!string.IsNullOrWhiteSpace(otlpEndpoint))
-                    options.Endpoint = new Uri(otlpEndpoint);
-            });
-    });
 
 var app = builder.Build();
 

@@ -16,13 +16,16 @@ Hiermee worden o.a. RabbitMQ, PostgreSQL, FakeComWorld (`comworld`), de producer
 
 ## Observability (OpenTelemetry)
 
-De producer en consumer exporteren traces en metrics via OTLP.
+De producer en consumer exporteren traces, metrics en logs via OTLP.
 
 - OTLP collector endpoint (default lokaal): `http://localhost:4317`
 - In Docker: producer/consumer sturen naar `http://otel-collector:4317`
-- Grafana: [http://localhost:3000](http://localhost:3000)
+- Grafana: [http://localhost:3000](http://localhost:3000) — Explore → **loki** voor logs (log → trace via `trace_id`)
+- Loki API: [http://localhost:3100](http://localhost:3100)
 - Jaeger UI: [http://localhost:16686](http://localhost:16686)
 - Prometheus UI: [http://localhost:9090](http://localhost:9090)
+
+ADR: [`docs/adr/0001-opentelemetry-logs-with-loki.md`](docs/adr/0001-opentelemetry-logs-with-loki.md)
 
 Belangrijke metrics:
 
