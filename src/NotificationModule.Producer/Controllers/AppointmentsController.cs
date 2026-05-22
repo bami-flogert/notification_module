@@ -30,8 +30,10 @@ public class AppointmentsController : ControllerBase
         if (message is null)
             return BadRequest("Body is required.");
 
-        _logger.LogInformation("Received appointment {Uuid} for patient {Patient}",
-            message.AppointmentUuid, message.PatientName);
+        _logger.LogInformation(
+            "Received appointment {AppointmentUuid} for organization {OrganizationKey}",
+            message.AppointmentUuid,
+            organizationKey ?? organizationHeader ?? message.OrganizationKey);
 
         AppointmentIngestionResult result;
         try

@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using NotificationModule.Shared.Observability;
 using NotificationModule.Shared.Models;
 using NotificationModule.Shared.Persistence;
+using System.Diagnostics;
 
 namespace NotificationModule.Producer.Services;
 
@@ -32,6 +34,7 @@ public sealed class NotificationSchedulerWorker : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            var cycleStart = Stopwatch.GetTimestamp();
             try
             {
                 var published = await PublishDueNotificationsAsync(stoppingToken);
@@ -46,6 +49,11 @@ public sealed class NotificationSchedulerWorker : BackgroundService
             {
                 _logger.LogError(ex, "Scheduler failed while publishing due notifications.");
             }
+            finally
+            {
+                var duration = Stopwatch.GetElapsedTime(cycleStart).TotalMilliseconds;
+                NotificationTelemetry.SchedulerCycleDurationMs.Record(duration);
+            }
 
             await Task.Delay(interval, stoppingToken);
         }
@@ -53,13 +61,36 @@ public sealed class NotificationSchedulerWorker : BackgroundService
 
     private async Task<int> PublishDueNotificationsAsync(CancellationToken cancellationToken)
     {
+        using var activity = NotificationTelemetry.ActivitySource.StartActivity(
+            "producer.scheduler.publish_due",
+            ActivityKind.Internal);
+
         var now = DateTimeOffset.UtcNow;
         var batchSize = Math.Clamp(_configuration.GetValue("Scheduler:BatchSize", 25), 1, 100);
 
         await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
         await RequeueStalePublishingNotificationsAsync(db, now, cancellationToken);
 
+        // Update pending queue metrics: count and oldest pending age (seconds)
+        var pendingStats = await db.ScheduledNotifications
+            .Where(x => x.Status == ScheduledNotificationStatuses.Pending && x.ScheduledSendAt <= now)
+            .GroupBy(x => 1)
+            .Select(g => new { Count = g.Count(), Oldest = g.Min(x => x.ScheduledSendAt) })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (pendingStats is null)
+        {
+            NotificationTelemetry.SetPendingMetrics(0, 0);
+        }
+        else
+        {
+            NotificationTelemetry.SetPendingMetrics(
+                pendingStats.Count,
+                (now - pendingStats.Oldest).TotalSeconds);
+        }
+
         var claimedIds = await ClaimDueNotificationIdsAsync(db, now, batchSize, cancellationToken);
+        NotificationTelemetry.SchedulerDueNotificationsCount.Add(claimedIds.Count);
         if (claimedIds.Count == 0)
             return 0;
 
@@ -110,6 +141,12 @@ public sealed class NotificationSchedulerWorker : BackgroundService
         }
 
         await db.SaveChangesAsync(cancellationToken);
+
+        activity?.SetTag("scheduler.claimed_count", claimedIds.Count);
+        activity?.SetTag("scheduler.published_count", publishedCount);
+        if (publishedCount > 0)
+            NotificationTelemetry.ScheduledNotificationsPublished.Add(publishedCount);
+
         return publishedCount;
     }
 

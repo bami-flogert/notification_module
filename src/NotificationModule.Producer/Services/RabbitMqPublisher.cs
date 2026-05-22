@@ -1,15 +1,21 @@
 using System;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using NotificationModule.Shared.Observability;
 using NotificationModule.Shared.Models;
+using OpenTelemetry;
+using OpenTelemetry.Context.Propagation;
 using RabbitMQ.Client;
 
 namespace NotificationModule.Producer.Services;
 
 public class RabbitMqPublisher : IDisposable
 {
+    private static readonly TextMapPropagator Propagator = Propagators.DefaultTextMapPropagator;
+
     private const string ExchangeName = "appointment.notifications";
     private static readonly string[] QueueNames =
     {
@@ -72,6 +78,17 @@ public class RabbitMqPublisher : IDisposable
 
     private void PublishOnOpenChannel(AppointmentMessage message)
     {
+        using var activity = NotificationTelemetry.ActivitySource.StartActivity(
+            "rabbitmq.publish.appointment_notification",
+            ActivityKind.Producer);
+
+        activity?.SetTag("messaging.system", "rabbitmq");
+        activity?.SetTag("messaging.destination", ExchangeName);
+        activity?.SetTag("messaging.operation", "publish");
+        activity?.SetTag("appointment.uuid", message.AppointmentUuid);
+        activity?.SetTag("organization.key", message.OrganizationKey);
+        activity?.SetTag("reminder.type", message.ReminderType);
+
         var body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message));
 
         var props = _channel!.CreateBasicProperties();
@@ -79,12 +96,25 @@ public class RabbitMqPublisher : IDisposable
         props.ContentType = "application/json";
         props.MessageId = Guid.NewGuid().ToString();
         props.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        props.Headers ??= new Dictionary<string, object>();
+        Propagator.Inject(new PropagationContext(activity?.Context ?? default, Baggage.Current), props, InjectTraceContextIntoBasicProperties);
 
         _channel.BasicPublish(
             exchange: ExchangeName,
             routingKey: string.Empty,
             basicProperties: props,
             body: body);
+
+        NotificationTelemetry.RabbitMqMessagesPublished.Add(
+            1,
+            new KeyValuePair<string, object?>("organization.key", message.OrganizationKey),
+            new KeyValuePair<string, object?>("reminder.type", message.ReminderType));
+    }
+
+    private static void InjectTraceContextIntoBasicProperties(IBasicProperties properties, string key, string value)
+    {
+        properties.Headers ??= new Dictionary<string, object>();
+        properties.Headers[key] = value;
     }
 
     private void EnsureConnectedWithRetry(int delayMs = 3000)

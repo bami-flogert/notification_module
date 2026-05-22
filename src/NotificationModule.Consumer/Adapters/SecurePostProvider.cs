@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using NotificationModule.Consumer.Secrets;
 using NotificationModule.Shared.Models;
+using NotificationModule.Shared.Observability;
 
 namespace NotificationModule.Consumer.Adapters;
 
@@ -113,24 +114,47 @@ public class SecurePostProvider : INotificationProvider
                 using var request = createRequest();
                 var response = await _http.SendAsync(request, ct);
                 if (response.IsSuccessStatusCode)
+                {
+                    NotificationTelemetry.ProviderRetryAttemptCount.Record(
+                        attempt,
+                        new KeyValuePair<string, object?>("provider", ChannelName));
                     return response;
+                }
 
                 var code = (int)response.StatusCode;
                 if (attempt == maxAttempts || (code < 500 && code != 408 && code != 429))
+                {
+                    NotificationTelemetry.ProviderRetryAttemptCount.Record(
+                        attempt,
+                        new KeyValuePair<string, object?>("provider", ChannelName));
                     return response;
+                }
+
+                NotificationTelemetry.ProviderRetryAttempts.Add(
+                    1,
+                    new KeyValuePair<string, object?>("provider", ChannelName),
+                    new KeyValuePair<string, object?>("attempt", attempt));
 
                 response.Dispose();
             }
             catch (HttpRequestException ex) when (attempt < maxAttempts)
             {
                 _logger.LogWarning(ex, "SecurePost transient error (attempt {Attempt}/{Max}). Retrying…", attempt, maxAttempts);
+                NotificationTelemetry.ProviderRetryAttempts.Add(
+                    1,
+                    new KeyValuePair<string, object?>("provider", ChannelName),
+                    new KeyValuePair<string, object?>("attempt", attempt));
             }
 
             await Task.Delay(TimeSpan.FromMilliseconds(500 * attempt), ct);
         }
 
         using var lastRequest = createRequest();
-        return await _http.SendAsync(lastRequest, ct);
+        var finalResp = await _http.SendAsync(lastRequest, ct);
+        NotificationTelemetry.ProviderRetryAttemptCount.Record(
+            maxAttempts,
+            new KeyValuePair<string, object?>("provider", ChannelName));
+        return finalResp;
     }
 
     private sealed record TokenCacheEntry(string Token, DateTime ExpiryUtc);

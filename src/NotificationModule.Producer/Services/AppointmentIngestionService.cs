@@ -1,5 +1,7 @@
 using System.Text.Json;
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
+using NotificationModule.Shared.Observability;
 using NotificationModule.Shared.Models;
 using NotificationModule.Shared.Persistence;
 
@@ -35,6 +37,10 @@ public sealed class AppointmentIngestionService
         string? organizationKey,
         CancellationToken cancellationToken)
     {
+        using var activity = NotificationTelemetry.ActivitySource.StartActivity(
+            "producer.appointment.ingest",
+            ActivityKind.Internal);
+
         ArgumentNullException.ThrowIfNull(message);
 
         if (string.IsNullOrWhiteSpace(message.AppointmentUuid))
@@ -54,6 +60,7 @@ public sealed class AppointmentIngestionService
                 cancellationToken);
 
         var created = appointment is null;
+        var createdNotificationCount = 0;
         if (appointment is null)
         {
             appointment = new AppointmentRecord
@@ -81,7 +88,7 @@ public sealed class AppointmentIngestionService
         if (IsCancelled(message.Status))
             CancelPendingNotifications(appointment, now);
         else
-            RebuildPendingNotifications(appointment, organization.Id, startDateTime, now);
+            createdNotificationCount = RebuildPendingNotifications(appointment, organization.Id, startDateTime, now);
 
         await db.SaveChangesAsync(cancellationToken);
 
@@ -90,6 +97,23 @@ public sealed class AppointmentIngestionService
             appointment.AppointmentUuid,
             organization.Key,
             created);
+
+        activity?.SetTag("organization.key", organization.Key);
+        activity?.SetTag("appointment.uuid", appointment.AppointmentUuid);
+        activity?.SetTag("appointment.created", created);
+        activity?.SetTag("scheduled.notifications.created", createdNotificationCount);
+
+        NotificationTelemetry.AppointmentsIngested.Add(
+            1,
+            new KeyValuePair<string, object?>("organization.key", organization.Key),
+            new KeyValuePair<string, object?>("appointment.created", created));
+
+        if (createdNotificationCount > 0)
+        {
+            NotificationTelemetry.ScheduledNotificationsCreated.Add(
+                createdNotificationCount,
+                new KeyValuePair<string, object?>("organization.key", organization.Key));
+        }
 
         return new AppointmentIngestionResult(
             organization.Key,
@@ -142,16 +166,17 @@ public sealed class AppointmentIngestionService
         return organization;
     }
 
-    private static void RebuildPendingNotifications(
+    private static int RebuildPendingNotifications(
         AppointmentRecord appointment,
         Guid organizationId,
         DateTimeOffset startDateTime,
         DateTimeOffset now)
     {
+        var createdCount = 0;
         CancelPendingNotifications(appointment, now);
 
         if (startDateTime <= now)
-            return;
+            return createdCount;
 
         foreach (var definition in ReminderDefinitions)
         {
@@ -170,7 +195,10 @@ public sealed class AppointmentIngestionService
                 CreatedAt = now,
                 UpdatedAt = now,
             });
+            createdCount++;
         }
+
+        return createdCount;
     }
 
     private static void CancelPendingNotifications(AppointmentRecord appointment, DateTimeOffset now)

@@ -14,6 +14,46 @@ Hiermee worden o.a. RabbitMQ, PostgreSQL, FakeComWorld (`comworld`), de producer
 
 **Lokaal (zonder Docker):** zorg dat Postgres draait en zet `SecretsDb:ConnectionString`, `Secrets:MasterKeyBase64` en eventueel `SecretsSeed:*` (of vul de DB handmatig).
 
+## Observability (OpenTelemetry)
+
+De producer en consumer exporteren traces, metrics en logs via OTLP.
+
+- OTLP collector endpoint (default lokaal): `http://localhost:4317`
+- In Docker: producer/consumer sturen naar `http://otel-collector:4317`
+- Grafana: [http://localhost:3000](http://localhost:3000) — Explore → **loki** voor logs (log → trace via `trace_id`)
+- Loki API: [http://localhost:3100](http://localhost:3100)
+- Jaeger UI: [http://localhost:16686](http://localhost:16686)
+- Prometheus UI: [http://localhost:9090](http://localhost:9090)
+
+ADR: [`docs/madr/0007-opentelemetry-logs-with-loki.md`](docs/madr/0007-opentelemetry-logs-with-loki.md)
+
+Belangrijke metrics:
+
+- `appointments_ingested_total`
+- `scheduled_notifications_created_total`
+- `scheduled_notifications_published_total`
+- `notification_dispatch_total`
+- `notification_dispatch_duration_ms`
+- `delivery_tracking_writes_total`
+- `scheduler_cycle_duration_ms`
+- `scheduler_due_notifications_count`
+
+Provisioned dashboards:
+
+- `Notification Module` (PostgreSQL operationeel overzicht)
+- `Notification Module - Prometheus Metrics`
+- `Notification Module - Jaeger Traces`
+
+Zie [`DASHBOARD_DATABASE.md`](DASHBOARD_DATABASE.md) voor DB data-flow en dashboard-SQL.
+
+Health endpoints: producer `http://localhost:5001/health` (liveness) en `/ready` (Postgres + RabbitMQ); consumer `http://localhost:5002/health` en `/ready`.
+
+Metrieken smoke-test (Docker-stack moet draaien of wordt gestart door het script):
+
+```bash
+./scripts/smoke-test-metrics.sh
+```
+
 ## Voorbeeldrequest
 
 De producer exposeert `POST /api/appointments`. Deze endpoint bewaart de afspraak in PostgreSQL en maakt geplande notificatieregels aan voor later. De scheduler in de producer publiceert notificaties naar RabbitMQ zodra ze verzonden moeten worden. De consumer schrijft daarna per provider een delivery-resultaat naar PostgreSQL.
@@ -52,11 +92,11 @@ Zie [`APPOINTMENT_ENDPOINT.md`](APPOINTMENT_ENDPOINT.md) voor uitleg over organi
 
 ## Geheimen (PostgreSQL)
 
-| Omgevingsvariabele | Doel |
-|--------------------|------|
+| Omgevingsvariabele          | Doel                                                                     |
+| --------------------------- | ------------------------------------------------------------------------ |
 | `SECRETS_MASTER_KEY_BASE64` | 32 bytes random key, Base64 → `Secrets__MasterKeyBase64` in de container |
-| `SECRETS_SEED_*` | Eénmalige seed als `provider_secrets` nog leeg is (zie `env.example`) |
-| `POSTGRES_PASSWORD` | Wachtwoord voor gebruiker `notification` (DB + connection string) |
+| `SECRETS_SEED_*`            | Eénmalige seed als `provider_secrets` nog leeg is (zie `env.example`)    |
+| `POSTGRES_PASSWORD`         | Wachtwoord voor gebruiker `notification` (DB + connection string)        |
 
 Gebruik in productie een sterke master key (`openssl rand -base64 32`) en roteer/reseed volgens jullie beveiligingsbeleid.
 

@@ -1,12 +1,10 @@
-
 services:
-
   rabbitmq:
     image: rabbitmq:3.13-management
     container_name: rabbitmq
     ports:
-      - "5672:5672"     # AMQP
-      - "15672:15672"   # Management UI  →  http://localhost:15672  (guest/guest)
+      - "5672:5672" # AMQP
+      - "15672:15672" # Management UI  →  http://localhost:15672  (guest/guest)
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 10s
@@ -34,7 +32,7 @@ services:
     image: ghcr.io/avansict/in2.4-fakecomworld:main
     container_name: comworld
     ports:
-      - "1337:8080"     # Provider docs  →  http://localhost:1337
+      - "1337:8080" # Provider docs  →  http://localhost:1337
 
   producer:
     build:
@@ -54,17 +52,24 @@ services:
       - Organizations__Default__TimeZone=${DEFAULT_ORGANIZATION_TIMEZONE:-UTC}
       - Scheduler__PollIntervalSeconds=${SCHEDULER_POLL_INTERVAL_SECONDS:-30}
       - Scheduler__BatchSize=${SCHEDULER_BATCH_SIZE:-25}
+      - OpenTelemetry__ServiceName=notification-producer
+      - OpenTelemetry__Environment=docker
+      - OpenTelemetry__Otlp__Endpoint=http://otel-collector:4317
     depends_on:
       rabbitmq:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
 
   consumer:
     build:
       context: .
       dockerfile: src/NotificationModule.Consumer/Dockerfile
     container_name: notification-consumer
+    ports:
+      - "5002:8080"
     environment:
       - RabbitMq__Host=rabbitmq
       - RabbitMq__Port=5672
@@ -88,11 +93,16 @@ services:
       - Organizations__Default__Key=${DEFAULT_ORGANIZATION_KEY:-default}
       - Organizations__Default__Name=${DEFAULT_ORGANIZATION_NAME:-Default Organization}
       - Organizations__Default__TimeZone=${DEFAULT_ORGANIZATION_TIMEZONE:-UTC}
+      - OpenTelemetry__ServiceName=notification-consumer
+      - OpenTelemetry__Environment=docker
+      - OpenTelemetry__Otlp__Endpoint=http://otel-collector:4317
     depends_on:
       rabbitmq:
         condition: service_healthy
       postgres:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
 
   grafana:
     image: grafana/grafana:10.4.2
@@ -111,7 +121,60 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      prometheus:
+        condition: service_started
+      jaeger:
+        condition: service_started
+      loki:
+        condition: service_started
+
+  loki:
+    image: grafana/loki:2.9.4
+    container_name: notification-loki
+    command: -config.file=/etc/loki/loki-config.yml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.103.1
+    container_name: notification-otel-collector
+    command: ["--config=/etc/otelcol/config.yaml"]
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8889:8889"
+    volumes:
+      - ./observability/otel/otel-collector-config.yml:/etc/otelcol/config.yaml:ro
+    depends_on:
+      jaeger:
+        condition: service_started
+      loki:
+        condition: service_started
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: notification-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"
+      - "4319:4317"
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: notification-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/rules:/etc/prometheus/rules:ro
 
 volumes:
   postgres_data:
   grafana_data:
+  loki_data:
