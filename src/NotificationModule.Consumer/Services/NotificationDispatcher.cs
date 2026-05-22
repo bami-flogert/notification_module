@@ -56,7 +56,10 @@ public class NotificationDispatcher
             string.Equals(p.ChannelName, providerName, StringComparison.OrdinalIgnoreCase));
 
         if (provider is null)
-            return NotificationDispatchResult.Failed($"Provider '{providerName}' is not registered.", providerName);
+            return NotificationDispatchResult.Failed(
+                $"Provider '{providerName}' is not registered.",
+                providerName,
+                DeliveryErrorTypes.Other);
 
         var started = Stopwatch.GetTimestamp();
         using var activity = NotificationTelemetry.ActivitySource.StartActivity(
@@ -108,17 +111,27 @@ public class NotificationDispatcher
             activity?.SetTag("organization.key", message.OrganizationKey);
             activity?.SetTag("dispatch.status", "failed");
 
-            return NotificationDispatchResult.Failed(ex.Message, provider.ChannelName);
+            return NotificationDispatchResult.Failed(
+                ex.Message,
+                provider.ChannelName,
+                DeliveryErrorClassifier.Classify(ex));
         }
     }
 }
 
-public sealed record NotificationDispatchResult(string Provider, bool Success, string? ErrorMessage)
+public sealed record NotificationDispatchResult(
+    string Provider,
+    bool Success,
+    string? ErrorMessage,
+    string? ErrorType = null)
 {
     public static NotificationDispatchResult Succeeded(string provider) =>
         new(provider, true, null);
 
-    public static NotificationDispatchResult Failed(string errorMessage, string provider = "") =>
-        new(provider, false, errorMessage);
+    public static NotificationDispatchResult Failed(
+        string errorMessage,
+        string provider = "",
+        string? errorType = null) =>
+        new(provider, false, errorMessage, errorType ?? DeliveryErrorTypes.Unknown);
 }
 

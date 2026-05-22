@@ -174,7 +174,8 @@ public class NotificationWorker : BackgroundService
             providerName,
             result.Success,
             result.ErrorMessage,
-            stoppingToken);
+            stoppingToken,
+            result.ErrorType);
     }
 
     private static void RecordMessageReceived(string queue, string? provider)

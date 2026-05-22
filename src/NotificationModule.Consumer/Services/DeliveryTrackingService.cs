@@ -33,7 +33,8 @@ public sealed class DeliveryTrackingService
         string provider,
         bool success,
         string? errorMessage,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? errorType = null)
     {
         using var activity = NotificationTelemetry.ActivitySource.StartActivity(
             "consumer.delivery.record",
@@ -125,23 +126,10 @@ public sealed class DeliveryTrackingService
         }
         else
         {
-            var errorType = "unknown";
-            if (!string.IsNullOrEmpty(errorMessage))
-            {
-                if (errorMessage.Contains("timeout", StringComparison.OrdinalIgnoreCase))
-                    errorType = "timeout";
-                else if (errorMessage.Contains("4", StringComparison.OrdinalIgnoreCase))
-                    errorType = "http_4xx";
-                else if (errorMessage.Contains("5", StringComparison.OrdinalIgnoreCase))
-                    errorType = "http_5xx";
-                else
-                    errorType = "other";
-            }
-
             NotificationTelemetry.DeliveryFailures.Add(
                 1,
                 new KeyValuePair<string, object?>("provider", provider),
-                new KeyValuePair<string, object?>("error_type", errorType));
+                new KeyValuePair<string, object?>("error_type", errorType ?? DeliveryErrorTypes.Unknown));
         }
     }
 

@@ -55,6 +55,9 @@ public static class NotificationTelemetry
         "notification_delivery_success_total",
         unit: "deliveries");
 
+    /// <summary>
+    /// Allowed <c>error_type</c> tag values: <see cref="DeliveryErrorTypes"/>.
+    /// </summary>
     public static readonly Counter<long> DeliveryFailures = Meter.CreateCounter<long>(
         "notification_delivery_failure_total",
         unit: "deliveries");
