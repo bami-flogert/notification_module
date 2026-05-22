@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
+using NotificationModule.Producer.Security;
 using NotificationModule.Producer.Services;
 using NotificationModule.Shared.Models;
 
@@ -6,6 +8,7 @@ namespace NotificationModule.Producer.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[ServiceFilter(typeof(AppointmentApiKeyAuthFilter))]
 public class AppointmentsController : ControllerBase
 {
     private readonly AppointmentIngestionService _ingestionService;
@@ -63,6 +66,12 @@ public class AppointmentsController : ControllerBase
             appointmentUuid = result.AppointmentUuid,
             organizationKey = result.OrganizationKey,
             pendingNotifications = result.PendingNotificationCount,
+            scheduledReminders = result.ScheduledReminders.Select(r => new
+            {
+                reminderType = r.ReminderType,
+                scheduledSendAt = r.ScheduledSendAt,
+                catchUp = r.CatchUp,
+            }),
         });
     }
 }

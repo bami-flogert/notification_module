@@ -48,47 +48,34 @@ Zie [`DASHBOARD_DATABASE.md`](DASHBOARD_DATABASE.md) voor DB data-flow en dashbo
 
 Health endpoints: producer `http://localhost:5001/health` (liveness) en `/ready` (Postgres + RabbitMQ); consumer `http://localhost:5002/health` en `/ready`.
 
-Metrieken smoke-test (Docker-stack moet draaien of wordt gestart door het script):
+## Voorbeeldrequest (FHIR)
+
+De producer accepteert FHIR R4 `Appointment` resources op `POST /fhir/Appointment` (HL7 ACK via `OperationOutcome` in het antwoord). Zie [`FHIR_ENDPOINT.md`](FHIR_ENDPOINT.md).
 
 ```bash
-./scripts/smoke-test-metrics.sh
-```
-
-## Voorbeeldrequest
-
-De producer exposeert `POST /api/appointments`. Deze endpoint bewaart de afspraak in PostgreSQL en maakt geplande notificatieregels aan voor later. De scheduler in de producer publiceert notificaties naar RabbitMQ zodra ze verzonden moeten worden. De consumer schrijft daarna per provider een delivery-resultaat naar PostgreSQL.
-
-Voorbeeld met `curl`:
-
-```bash
-curl -X POST http://localhost:5001/api/appointments \
-  -H "Content-Type: application/json" \
+curl -X POST http://localhost:5001/fhir/Appointment/default \
+  -H "X-Api-Key: change-me-in-prod" \
+  -H "Content-Type: application/fhir+json" \
+  -H "Accept: application/fhir+json" \
   -d '{
-    "appointmentUuid": "demo-1",
-    "organizationKey": "default",
-    "patientUuid": "patient-1",
-    "patientName": "Peter Jansen",
-    "patientPhone": "+31612345678",
-    "patientEmail": "Peter.jansen@example.com",
-    "startDateTime": "2026-05-12T14:30:00Z",
-    "status": "Confirmed",
-    "location": "Polikliniek A, kamer 12",
-    "instructions": "Neem een geldig identiteitsbewijs mee."
+    "resourceType": "Appointment",
+    "status": "booked",
+    "start": "2026-05-12T14:30:00Z",
+    "identifier": [{ "system": "http://openmrs.org/appointment", "value": "demo-1" }],
+    "participant": [{
+      "actor": { "reference": "Patient/patient-1", "display": "Peter Jansen" },
+      "status": "accepted"
+    }],
+    "patientInstruction": "Neem een geldig identiteitsbewijs mee.",
+    "extension": [
+      { "url": "http://notification-module.local/StructureDefinition/patient-phone", "valueString": "+31612345678" },
+      { "url": "http://notification-module.local/StructureDefinition/patient-email", "valueString": "peter@example.com" },
+      { "url": "http://notification-module.local/StructureDefinition/location-text", "valueString": "Polikliniek A" }
+    ]
   }'
 ```
 
-Verwachte response:
-
-```json
-{
-  "message": "Appointment saved.",
-  "appointmentUuid": "demo-1",
-  "organizationKey": "default",
-  "pendingNotifications": 2
-}
-```
-
-Zie [`APPOINTMENT_ENDPOINT.md`](APPOINTMENT_ENDPOINT.md) voor uitleg over organisaties, de requestopties, scheduler, delivery tracking en welke tabellen worden gevuld.
+Het platte JSON-endpoint `POST /api/appointments` blijft beschikbaar maar is verouderd; zie [`APPOINTMENT_ENDPOINT.md`](APPOINTMENT_ENDPOINT.md).
 
 ## Geheimen (PostgreSQL)
 
@@ -96,6 +83,7 @@ Zie [`APPOINTMENT_ENDPOINT.md`](APPOINTMENT_ENDPOINT.md) voor uitleg over organi
 | --------------------------- | ------------------------------------------------------------------------ |
 | `SECRETS_MASTER_KEY_BASE64` | 32 bytes random key, Base64 → `Secrets__MasterKeyBase64` in de container |
 | `SECRETS_SEED_*`            | Eénmalige seed als `provider_secrets` nog leeg is (zie `env.example`)    |
+| `APIKEY_SEED_DEFAULT`       | Eénmalige seed voor `POST /api/appointments` auth (wordt gehashed opgeslagen) |
 | `POSTGRES_PASSWORD`         | Wachtwoord voor gebruiker `notification` (DB + connection string)        |
 
 Gebruik in productie een sterke master key (`openssl rand -base64 32`) en roteer/reseed volgens jullie beveiligingsbeleid.

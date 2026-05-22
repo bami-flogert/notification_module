@@ -50,6 +50,7 @@ services:
       - Organizations__Default__Key=${DEFAULT_ORGANIZATION_KEY:-default}
       - Organizations__Default__Name=${DEFAULT_ORGANIZATION_NAME:-Default Organization}
       - Organizations__Default__TimeZone=${DEFAULT_ORGANIZATION_TIMEZONE:-UTC}
+      - ApiKeys__Seed__Default=${APIKEY_SEED_DEFAULT:-}
       - Scheduler__PollIntervalSeconds=${SCHEDULER_POLL_INTERVAL_SECONDS:-30}
       - Scheduler__BatchSize=${SCHEDULER_BATCH_SIZE:-25}
       - OpenTelemetry__ServiceName=notification-producer

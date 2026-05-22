@@ -17,12 +17,12 @@ public class RabbitMqPublisher : IDisposable
     private static readonly TextMapPropagator Propagator = Propagators.DefaultTextMapPropagator;
 
     private const string ExchangeName = "appointment.notifications";
-    private static readonly string[] QueueNames =
+    private static readonly (string Queue, string RoutingKey)[] QueueBindings =
     {
-        "notifications.swiftsend",
-        "notifications.securepost",
-        "notifications.legacylink",
-        "notifications.asyncflow"
+        ("notifications.swiftsend",  "SwiftSend"),
+        ("notifications.securepost", "SecurePost"),
+        ("notifications.legacylink", "LegacyLink"),
+        ("notifications.asyncflow",  "AsyncFlow"),
     };
 
     private readonly ILogger<RabbitMqPublisher> _logger;
@@ -99,9 +99,13 @@ public class RabbitMqPublisher : IDisposable
         props.Headers ??= new Dictionary<string, object>();
         Propagator.Inject(new PropagationContext(activity?.Context ?? default, Baggage.Current), props, InjectTraceContextIntoBasicProperties);
 
+        var routingKey = string.IsNullOrWhiteSpace(message.TargetProvider)
+            ? "SwiftSend"
+            : message.TargetProvider.Trim();
+
         _channel.BasicPublish(
             exchange: ExchangeName,
-            routingKey: string.Empty,
+            routingKey: routingKey,
             basicProperties: props,
             body: body);
 
@@ -149,12 +153,12 @@ public class RabbitMqPublisher : IDisposable
 
     private void DeclareTopology()
     {
-        _channel!.ExchangeDeclare(ExchangeName, ExchangeType.Fanout, durable: true);
+        _channel!.ExchangeDeclare(ExchangeName, ExchangeType.Direct, durable: true);
 
-        foreach (var queue in QueueNames)
+        foreach (var (queue, routingKey) in QueueBindings)
         {
             _channel.QueueDeclare(queue, durable: true, exclusive: false, autoDelete: false);
-            _channel.QueueBind(queue, ExchangeName, routingKey: string.Empty);
+            _channel.QueueBind(queue, ExchangeName, routingKey: routingKey);
         }
     }
 

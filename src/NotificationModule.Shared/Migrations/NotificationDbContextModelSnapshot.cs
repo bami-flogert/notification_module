@@ -103,6 +103,10 @@ partial class NotificationDbContextModelSnapshot : ModelSnapshot
             b.Property<DateTimeOffset>("CreatedAt")
                 .HasColumnType("timestamp with time zone");
 
+            b.Property<string>("FallbackProviders")
+                .HasMaxLength(500)
+                .HasColumnType("character varying(500)");
+
             b.Property<bool>("IsEnabled")
                 .HasColumnType("boolean");
 
@@ -120,6 +124,11 @@ partial class NotificationDbContextModelSnapshot : ModelSnapshot
                 .HasMaxLength(500)
                 .HasColumnType("character varying(500)");
 
+            b.Property<string>("PreferredProvider")
+                .IsRequired()
+                .HasMaxLength(64)
+                .HasColumnType("character varying(64)");
+
             b.Property<string>("TimeZone")
                 .IsRequired()
                 .HasMaxLength(100)
@@ -134,6 +143,38 @@ partial class NotificationDbContextModelSnapshot : ModelSnapshot
                 .IsUnique();
 
             b.ToTable("organizations");
+        });
+
+        modelBuilder.Entity("NotificationModule.Shared.Persistence.OrganizationApiKeyRecord", b =>
+        {
+            b.Property<Guid>("Id")
+                .HasColumnType("uuid");
+
+            b.Property<DateTimeOffset>("CreatedAt")
+                .HasColumnType("timestamp with time zone");
+
+            b.Property<bool>("IsEnabled")
+                .HasColumnType("boolean");
+
+            b.Property<byte[]>("KeyHash")
+                .IsRequired()
+                .HasColumnType("bytea");
+
+            b.Property<Guid>("OrganizationId")
+                .HasColumnType("uuid");
+
+            b.Property<byte[]>("Salt")
+                .IsRequired()
+                .HasColumnType("bytea");
+
+            b.Property<DateTimeOffset>("UpdatedAt")
+                .HasColumnType("timestamp with time zone");
+
+            b.HasKey("Id");
+
+            b.HasIndex("OrganizationId");
+
+            b.ToTable("organization_api_keys");
         });
 
         modelBuilder.Entity("NotificationModule.Shared.Persistence.NotificationDeliveryRecord", b =>
@@ -266,6 +307,17 @@ partial class NotificationDbContextModelSnapshot : ModelSnapshot
             b.Navigation("Organization");
         });
 
+        modelBuilder.Entity("NotificationModule.Shared.Persistence.OrganizationApiKeyRecord", b =>
+        {
+            b.HasOne("NotificationModule.Shared.Persistence.OrganizationRecord", "Organization")
+                .WithMany("ApiKeys")
+                .HasForeignKey("OrganizationId")
+                .OnDelete(DeleteBehavior.Cascade)
+                .IsRequired();
+
+            b.Navigation("Organization");
+        });
+
         modelBuilder.Entity("NotificationModule.Shared.Persistence.ProviderSecretRecord", b =>
         {
             b.HasOne("NotificationModule.Shared.Persistence.OrganizationRecord", "Organization")
@@ -332,6 +384,8 @@ partial class NotificationDbContextModelSnapshot : ModelSnapshot
 
         modelBuilder.Entity("NotificationModule.Shared.Persistence.OrganizationRecord", b =>
         {
+            b.Navigation("ApiKeys");
+
             b.Navigation("Appointments");
 
             b.Navigation("ProviderSecrets");
