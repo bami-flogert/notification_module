@@ -1,37 +1,39 @@
-## 8. Bevestigingen (ACK) voor notificaties
+# ADR: Bevestigingen (ACK) voor notificaties
 
-### Status
+## Status
 
-Accepted
+Superseded — vervangen door [0010-fhir-integratie.md](0010-fhir-integratie.md)
 
-### Context
+> Dit document beschrijft de eerdere keuze (alleen REST, intake `202 Accepted`). De module gebruikt inmiddels **FHIR R4** voor intake met `**201 Created`** / `**200 OK**`. Zie ADR 0010 en `[FHIR_ENDPOINT.md](../../FHIR_ENDPOINT.md)`. Het besluit en en de gevolgen zijn historisch.
 
-De applicatie verwerkt afspraken via een REST-interface en verstuurt notificaties asynchroon via een berichtenqueue. Omdat geen gebruik wordt gemaakt van HL7 v2- of FHIR-messaging, is een volledig medisch ACK/NACK-protocol niet nodig.
+## Context
 
-### Beslissing
+De applicatie verwerkt afspraken via een REST-interface en verstuurt notificaties asynchroon via een berichtenqueue. Omdat geen gebruik werd gemaakt van HL7 v2- of FHIR-messaging, leek een volledig medisch ACK/NACK-protocol niet nodig.
 
-De applicatie gebruikt een vereenvoudigd bevestigingsmodel met drie niveaus:
+## Besluit
+
+De applicatie gebruikte een vereenvoudigd bevestigingsmodel met drie niveaus:
 
 - **Intakebevestiging**  
-De API retourneert `HTTP 202 Accepted` zodra een afspraak correct is ontvangen.
+De API retourneerde `HTTP 202 Accepted` zodra een afspraak correct was ontvangen.
 - **Verwerkingsbevestiging**  
-De queue bevestigt wanneer een notificatie succesvol is verwerkt of definitief is mislukt.
+De queue bevestigde wanneer een notificatie succesvol was verwerkt of definitief was mislukt.
 - **Applicatiebevestiging**  
-De uiteindelijke status wordt opgeslagen in `notification_deliveries`, inclusief status, foutmeldingen en tijdstippen.
+De uiteindelijke status werd opgeslagen in `notification_deliveries`, inclusief status, foutmeldingen en tijdstippen.
 
-Monitoring en logging verlopen via bestaande observability-componenten. Er wordt geen apart HL7/FHIR ACK-mechanisme toegevoegd.
+Monitoring en logging verliepen via bestaande observability-componenten. Er werd geen apart HL7/FHIR ACK-mechanisme toegevoegd.
 
-### Gevolgen
+## Gevolgen
 
-**Positief**
+### Positief
 
 - Centrale registratie van afleverstatussen.
 - Minder architecturale complexiteit.
 - Goed passend bij een REST-gebaseerd notificatiesysteem.
 
-**Negatief**
+### Negatief
 
 - Geen ondersteuning voor HL7/FHIR ACK-standaarden.
-- Externe systemen ontvangen geen protocolniveau-ACK’s.
-- Foutafhandeling blijft afhankelijk van logging en queue-statussen.
+- Externe systemen ontvingen geen protocolniveau-ACK’s.
+- Foutafhandeling bleef afhankelijk van logging en queue-statussen.
 

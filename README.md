@@ -25,7 +25,7 @@ De producer en consumer exporteren traces, metrics en logs via OTLP.
 - Jaeger UI: [http://localhost:16686](http://localhost:16686)
 - Prometheus UI: [http://localhost:9090](http://localhost:9090)
 
-ADR: [`docs/madr/0007-opentelemetry-logs-with-loki.md`](docs/madr/0007-opentelemetry-logs-with-loki.md)
+ADR's: [`docs/madr/README.md`](docs/madr/README.md) (overzicht) · FHIR-intake: [`docs/madr/0010-fhir-integratie.md`](docs/madr/0010-fhir-integratie.md) · Observability: [`docs/madr/0007-opentelemetry-logs-with-loki.md`](docs/madr/0007-opentelemetry-logs-with-loki.md)
 
 Belangrijke metrics:
 
@@ -76,6 +76,15 @@ curl -X POST http://localhost:5001/fhir/Appointment/default \
 ```
 
 Het platte JSON-endpoint `POST /api/appointments` blijft beschikbaar maar is verouderd; zie [`APPOINTMENT_ENDPOINT.md`](APPOINTMENT_ENDPOINT.md).
+
+## Documentatie
+
+| Onderwerp | Bestand |
+|-----------|---------|
+| FHIR-intake | [`FHIR_ENDPOINT.md`](FHIR_ENDPOINT.md) |
+| Uitbreiden (provider, nieuw meldingtype, tekenset) | [`docs/EXTENSIBILITY.md`](docs/EXTENSIBILITY.md) |
+| Betrouwbaarheid (DLQ, retries) | [`docs/RELIABILITY.md`](docs/RELIABILITY.md) |
+| Architectuurbeslissingen | [`docs/madr/README.md`](docs/madr/README.md) |
 
 ## Geheimen (PostgreSQL)
 

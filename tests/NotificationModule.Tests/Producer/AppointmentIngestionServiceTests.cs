@@ -136,6 +136,48 @@ public sealed class AppointmentIngestionServiceTests
     }
 
     [Fact]
+    public async Task IngestAsync_succeeds_when_pending_reminders_were_claimed_by_scheduler()
+    {
+        var (service, dbFactory) = CreateService();
+        var start = DateTimeOffset.UtcNow.AddDays(2);
+        var message = CreateMessage(start.UtcDateTime);
+
+        await service.IngestAsync(message, "default", CancellationToken.None);
+
+        await using (var db = await dbFactory.CreateDbContextAsync())
+        {
+            foreach (var reminder in db.ScheduledNotifications
+                         .Where(x => x.Status == ScheduledNotificationStatuses.Pending))
+            {
+                reminder.Status = ScheduledNotificationStatuses.Publishing;
+                reminder.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+
+            await db.SaveChangesAsync();
+        }
+
+        var updated = message with
+        {
+            StartDateTime = start.AddHours(1).UtcDateTime,
+            Location = "Room 2",
+        };
+
+        var result = await service.IngestAsync(updated, "default", CancellationToken.None);
+
+        Assert.False(result.Created);
+        Assert.Equal(2, result.PendingNotificationCount);
+
+        await using var verifyDb = await dbFactory.CreateDbContextAsync();
+        var statuses = verifyDb.ScheduledNotifications
+            .Where(x => x.AppointmentId == verifyDb.Appointments.Single().Id)
+            .Select(x => x.Status)
+            .ToList();
+
+        Assert.Equal(2, statuses.Count(x => x == ScheduledNotificationStatuses.Pending));
+        Assert.Contains(ScheduledNotificationStatuses.Publishing, statuses);
+    }
+
+    [Fact]
     public async Task IngestAsync_cancels_pending_reminders_when_status_is_cancelled()
     {
         var (service, dbFactory) = CreateService();

@@ -48,5 +48,5 @@ Prometheus metric: `notification_messages_dlq_total` (tags: `queue`, `provider`,
 
 ## Related
 
-- ADR: [0009-dead-letter-queues.md](madr/0009-dead-letter-queues.md) (Dutch)
+- ADR: [0009-dead-letter-queues.md](madr/0009-dead-letter-queues.md), [0010-fhir-integratie.md](madr/0010-fhir-integratie.md) (Dutch)
 - Implementation: `NotificationWorker`, `RabbitMqDeadLetterPublisher`, `RabbitMqMessageFailurePolicy`

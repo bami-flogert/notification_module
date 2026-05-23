@@ -57,7 +57,6 @@ public sealed class AppointmentIngestionService
         var organization = await EnsureOrganizationAsync(db, resolvedOrganizationKey, now, cancellationToken);
 
         var appointment = await db.Appointments
-            .Include(x => x.ScheduledNotifications)
             .SingleOrDefaultAsync(
                 x => x.OrganizationId == organization.Id && x.AppointmentUuid == message.AppointmentUuid,
                 cancellationToken);
@@ -93,16 +92,18 @@ public sealed class AppointmentIngestionService
         IReadOnlyList<ScheduledReminderPlan> scheduledReminders;
         if (IsCancelled(message.Status))
         {
-            CancelPendingNotifications(appointment, now);
+            await CancelPendingNotificationsInDatabaseAsync(db, appointment.Id, now, cancellationToken);
             scheduledReminders = [];
         }
         else
         {
-            scheduledReminders = RebuildPendingNotifications(
+            scheduledReminders = await RebuildPendingNotificationsAsync(
+                db,
                 appointment,
                 organization.Id,
                 startDateTime,
-                now);
+                now,
+                cancellationToken);
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -113,7 +114,9 @@ public sealed class AppointmentIngestionService
             organization.Key,
             created);
 
-        var pendingCount = appointment.ScheduledNotifications.Count(x => x.Status == PendingStatus);
+        var pendingCount = await db.ScheduledNotifications.CountAsync(
+            x => x.AppointmentId == appointment.Id && x.Status == PendingStatus,
+            cancellationToken);
         var createdNotificationCount = scheduledReminders.Count;
 
         activity?.SetTag("organization.key", organization.Key);
@@ -187,13 +190,15 @@ public sealed class AppointmentIngestionService
         return organization;
     }
 
-    private static IReadOnlyList<ScheduledReminderPlan> RebuildPendingNotifications(
+    private async Task<IReadOnlyList<ScheduledReminderPlan>> RebuildPendingNotificationsAsync(
+        NotificationDbContext db,
         AppointmentRecord appointment,
         Guid organizationId,
         DateTimeOffset startDateTime,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
     {
-        CancelPendingNotifications(appointment, now);
+        await CancelPendingNotificationsInDatabaseAsync(db, appointment.Id, now, cancellationToken);
 
         if (startDateTime <= now)
             return [];
@@ -211,7 +216,7 @@ public sealed class AppointmentIngestionService
             var isCatchUp = idealSendAt <= now;
             var scheduledSendAt = isCatchUp ? now : idealSendAt;
 
-            appointment.ScheduledNotifications.Add(new ScheduledNotificationRecord
+            db.ScheduledNotifications.Add(new ScheduledNotificationRecord
             {
                 Id = Guid.NewGuid(),
                 OrganizationId = organizationId,
@@ -232,13 +237,32 @@ public sealed class AppointmentIngestionService
         return plans;
     }
 
-    private static void CancelPendingNotifications(AppointmentRecord appointment, DateTimeOffset now)
+    private static async Task CancelPendingNotificationsInDatabaseAsync(
+        NotificationDbContext db,
+        Guid appointmentId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
     {
-        foreach (var scheduledNotification in appointment.ScheduledNotifications
-            .Where(x => x.Status == PendingStatus))
+        if (db.Database.IsRelational())
         {
-            scheduledNotification.Status = CancelledStatus;
-            scheduledNotification.UpdatedAt = now;
+            await db.ScheduledNotifications
+                .Where(x => x.AppointmentId == appointmentId && x.Status == PendingStatus)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(x => x.Status, CancelledStatus)
+                        .SetProperty(x => x.UpdatedAt, now),
+                    cancellationToken);
+            return;
+        }
+
+        var pending = await db.ScheduledNotifications
+            .Where(x => x.AppointmentId == appointmentId && x.Status == PendingStatus)
+            .ToListAsync(cancellationToken);
+
+        foreach (var notification in pending)
+        {
+            notification.Status = CancelledStatus;
+            notification.UpdatedAt = now;
         }
     }
 

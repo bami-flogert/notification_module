@@ -41,16 +41,34 @@ public sealed class FhirAppointmentController : ControllerBase
         [FromHeader(Name = "X-Organization-Key")] string? organizationHeader,
         CancellationToken cancellationToken)
     {
+        if (!FhirRequestEncoding.IsSupportedContentType(Request.ContentType, out var charsetError))
+        {
+            return FhirResponseWriter.OperationOutcome(
+                FhirAcknowledgementBuilder.Error(charsetError!),
+                StatusCodes.Status400BadRequest);
+        }
+
+        using var memory = new MemoryStream();
+        await Request.Body.CopyToAsync(memory, cancellationToken);
+        var body = memory.ToArray();
+
+        if (body.Length == 0)
+        {
+            return FhirResponseWriter.OperationOutcome(
+                FhirAcknowledgementBuilder.Error("Request body is required."),
+                StatusCodes.Status400BadRequest);
+        }
+
+        if (!FhirRequestEncoding.TryDecodeUtf8Body(body, out var json, out var utf8Error))
+        {
+            return FhirResponseWriter.OperationOutcome(
+                FhirAcknowledgementBuilder.Error(utf8Error!),
+                StatusCodes.Status400BadRequest);
+        }
+
         Resource resource;
         try
         {
-            using var reader = new StreamReader(Request.Body);
-            var json = await reader.ReadToEndAsync(cancellationToken);
-            if (string.IsNullOrWhiteSpace(json))
-                return FhirResponseWriter.OperationOutcome(
-                    FhirAcknowledgementBuilder.Error("Request body is required."),
-                    StatusCodes.Status400BadRequest);
-
             resource = Parser.Parse<Resource>(json);
         }
         catch (FormatException ex)
