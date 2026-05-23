@@ -42,6 +42,7 @@ public class SwiftSendProvider : INotificationProvider
         };
 
         using var response = await PostJsonWithRetryAsync("/swiftsend", body, orgSecrets.SwiftSend.ApiKey, ct);
+        ProviderLogging.LogHttpResult(_logger, ChannelName, message, (int)response.StatusCode);
         response.EnsureSuccessStatusCode();
     }
 

@@ -51,12 +51,13 @@ public class AsyncFlowProvider : INotificationProvider
         };
 
         using var submitResponse = await PostJsonWithRetryAsync("/asyncflow", submitBody, apiKey, ct);
+        ProviderLogging.LogHttpResult(_logger, ChannelName, message, (int)submitResponse.StatusCode);
         submitResponse.EnsureSuccessStatusCode();
 
         var submitJson = await submitResponse.Content.ReadAsStringAsync(ct);
         var trackingId = ExtractTrackingId(submitJson);
         if (string.IsNullOrWhiteSpace(trackingId))
-            throw new InvalidOperationException($"AsyncFlow submit succeeded but no trackingId returned. Body: {submitJson}");
+            throw new InvalidOperationException("AsyncFlow submit succeeded but no trackingId was returned.");
 
         await WaitForCompletionAsync(trackingId, apiKey, ct);
     }
@@ -78,7 +79,7 @@ public class AsyncFlowProvider : INotificationProvider
                 return;
 
             if (string.Equals(status, "Failed", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException($"AsyncFlow reported Failed for {trackingId}. Body: {json}");
+                throw new InvalidOperationException($"AsyncFlow reported Failed for trackingId {trackingId}.");
 
             await Task.Delay(delayMs, ct);
             delayMs = Math.Min(delayMs * 2, 2000);

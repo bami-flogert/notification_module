@@ -43,6 +43,7 @@ public class LegacyLinkProvider : INotificationProvider
             orgSecrets.LegacyLink.Username,
             orgSecrets.LegacyLink.Password,
             ct);
+        ProviderLogging.LogHttpResult(_logger, ChannelName, message, (int)response.StatusCode);
         response.EnsureSuccessStatusCode();
     }
 

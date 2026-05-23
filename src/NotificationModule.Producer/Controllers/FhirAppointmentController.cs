@@ -89,9 +89,9 @@ public sealed class FhirAppointmentController : ControllerBase
         }
 
         _logger.LogInformation(
-            "Received FHIR appointment {Uuid} for patient {Patient}",
+            "Received FHIR appointment {AppointmentUuid} for organization {OrganizationKey}",
             message.AppointmentUuid,
-            message.PatientName);
+            message.OrganizationKey);
 
         AppointmentIngestionResult result;
         try

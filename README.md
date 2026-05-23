@@ -96,6 +96,20 @@ dotnet test NotificationModule.sln
 
 GitHub Actions runs the same tests and verifies that the producer and consumer Docker images build on every push and pull request to `main`/`master` (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
+### Comprehensive test checklist
+
+Full matrix (endpoints, DB, observability, pipeline): see [TEST_CHECKLIST.md](TEST_CHECKLIST.md).
+
+```powershell
+docker compose --env-file env.example up --build -d
+dotnet test NotificationModule.sln
+.\scripts\comprehensive-test.ps1
+```
+
+```bash
+./scripts/comprehensive-test.sh
+```
+
 ### Snelle smoke-test (Docker aan)
 
 ```bash

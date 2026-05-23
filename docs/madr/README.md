@@ -4,5 +4,12 @@ Log of significant architectural decisions for the Notification Module (Michael 
 
 | ADR | Title | Status |
 |-----|-------|--------|
-| [0001](0001-opentelemetry-logs-with-loki.md) | OpenTelemetry Logs exported to Loki | Accepted |
-| [0002](0002-delivery-acknowledgements.md) | Delivery acknowledgements (ACK) without HL7 wire format | Accepted |
+| [0001](0001-intro.md) | Introductie ADR's | Accepted |
+| [0002](0002-losstaande-module-architectuur.md) | Losstaande module-architectuur | Accepted |
+| [0003](0003-technologie-stack-messaging-opslag.md) | Technologie-stack (messaging & opslag) | Accepted |
+| [0004](0004-integratiemethode.md) | Integratiemethode | Accepted |
+| [0005](0005-dotnet-voor-de-module.md) | .NET voor de module | Accepted |
+| [0006](0006-observabilty-stack.md) | Observability-stack | Accepted |
+| [0007](0007-opentelemetry-logs-with-loki.md) | OpenTelemetry logs met Loki | Accepted |
+| [0008](0008-delivery-acknowledgements.md) | Delivery acknowledgements | Accepted |
+| [0009](0009-dead-letter-queues.md) | Dead-letter queues voor mislukte berichten | Accepted |

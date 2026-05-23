@@ -66,6 +66,7 @@ public class SecurePostProvider : INotificationProvider
                 return request;
             },
             ct);
+        ProviderLogging.LogHttpResult(_logger, ChannelName, message, (int)response.StatusCode);
         response.EnsureSuccessStatusCode();
     }
 

@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using NotificationModule.Shared.Messaging;
 using NotificationModule.Shared.Observability;
 using NotificationModule.Shared.Models;
 using OpenTelemetry;
@@ -15,15 +16,6 @@ namespace NotificationModule.Producer.Services;
 public class RabbitMqPublisher : IDisposable
 {
     private static readonly TextMapPropagator Propagator = Propagators.DefaultTextMapPropagator;
-
-    private const string ExchangeName = "appointment.notifications";
-    private static readonly (string Queue, string RoutingKey)[] QueueBindings =
-    {
-        ("notifications.swiftsend",  "SwiftSend"),
-        ("notifications.securepost", "SecurePost"),
-        ("notifications.legacylink", "LegacyLink"),
-        ("notifications.asyncflow",  "AsyncFlow"),
-    };
 
     private readonly ILogger<RabbitMqPublisher> _logger;
     private readonly ConnectionFactory _factory;
@@ -83,7 +75,7 @@ public class RabbitMqPublisher : IDisposable
             ActivityKind.Producer);
 
         activity?.SetTag("messaging.system", "rabbitmq");
-        activity?.SetTag("messaging.destination", ExchangeName);
+        activity?.SetTag("messaging.destination", RabbitMqTopology.ExchangeName);
         activity?.SetTag("messaging.operation", "publish");
         activity?.SetTag("appointment.uuid", message.AppointmentUuid);
         activity?.SetTag("organization.key", message.OrganizationKey);
@@ -104,7 +96,7 @@ public class RabbitMqPublisher : IDisposable
             : message.TargetProvider.Trim();
 
         _channel.BasicPublish(
-            exchange: ExchangeName,
+            exchange: RabbitMqTopology.ExchangeName,
             routingKey: routingKey,
             basicProperties: props,
             body: body);
@@ -151,16 +143,7 @@ public class RabbitMqPublisher : IDisposable
         }
     }
 
-    private void DeclareTopology()
-    {
-        _channel!.ExchangeDeclare(ExchangeName, ExchangeType.Direct, durable: true);
-
-        foreach (var (queue, routingKey) in QueueBindings)
-        {
-            _channel.QueueDeclare(queue, durable: true, exclusive: false, autoDelete: false);
-            _channel.QueueBind(queue, ExchangeName, routingKey: routingKey);
-        }
-    }
+    private void DeclareTopology() => RabbitMqTopology.Declare(_channel!);
 
     public void Dispose()
     {
