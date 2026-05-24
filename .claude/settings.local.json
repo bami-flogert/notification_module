@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\flori\\\\Documents\\\\GitHub\\\\notification_module\" -Force | Format-Table Name, @{Name=\"Type\";Expression={if\\($_.PSIsContainer\\){\"Dir\"}else{\"File\"}}} -AutoSize)",
-      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\flori\\\\Documents\\\\GitHub\\\\notification_module\\\\src\" -Recurse -Force | Select-Object FullName | ForEach-Object { $_.FullName.Replace\\('C:\\\\Users\\\\flori\\\\Documents\\\\GitHub\\\\notification_module\\\\', ''\\) })"
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\flori\\\\Documents\\\\GitHub\\\\notification_module\\\\src\" -Recurse -Force | Select-Object FullName | ForEach-Object { $_.FullName.Replace\\('C:\\\\Users\\\\flori\\\\Documents\\\\GitHub\\\\notification_module\\\\', ''\\) })",
+      "Bash(grep -E '\\\\.\\(cs|csproj|sln\\)$')",
+      "Bash(curl -s -H \"X-STUDENT-GROUP: group-2dot4\" http://localhost:1337/swiftsend/messages)",
+      "Bash(curl -sv -H \"X-STUDENT-GROUP: group-2dot4\" http://localhost:1337/)",
+      "Bash(curl -s -H \"X-STUDENT-GROUP: group-2dot4\" http://localhost:1337/)",
+      "Bash(curl -s http://localhost:1337/)",
+      "Bash(docker compose *)",
+      "Bash(curl -s -H \"X-STUDENT-GROUP: group-2dot4\" http://localhost:1337/asyncflow)"
     ]
   }
 }

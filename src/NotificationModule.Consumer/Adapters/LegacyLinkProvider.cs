@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using NotificationModule.Consumer.Secrets;
+using NotificationModule.Shared;
 using NotificationModule.Shared.Models;
 using NotificationModule.Shared.Observability;
 
@@ -48,8 +49,7 @@ public class LegacyLinkProvider : INotificationProvider
 
     private static string BuildLegacyLinkSendSmsXml(AppointmentMessage m)
     {
-        var text =
-            $"Appointment reminder for {m.PatientName}: {m.StartDateTime:dd MMM yyyy HH:mm} UTC — {m.Status}";
+        var text = NotificationMessageBuilder.Build(m);
 
         return $"""
             <?xml version="1.0" encoding="utf-8"?>
