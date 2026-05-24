@@ -8,9 +8,9 @@ public sealed class AppointmentRecord
 
     public string AppointmentUuid { get; set; } = null!;
     public string PatientUuid { get; set; } = null!;
-    public string PatientName { get; set; } = null!;
-    public string PatientPhone { get; set; } = null!;
-    public string PatientEmail { get; set; } = null!;
+    public string? PatientName { get; set; }
+    public string? PatientPhone { get; set; }
+    public string? PatientEmail { get; set; }
     public DateTimeOffset StartDateTime { get; set; }
     public string Status { get; set; } = null!;
     public string? Location { get; set; }
@@ -19,6 +19,7 @@ public sealed class AppointmentRecord
     public string? RawSourcePayload { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+    public DateTimeOffset? PiiPurgedAt { get; set; }
 
     public ICollection<ScheduledNotificationRecord> ScheduledNotifications { get; set; } = new List<ScheduledNotificationRecord>();
     public ICollection<NotificationDeliveryRecord> Deliveries { get; set; } = new List<NotificationDeliveryRecord>();

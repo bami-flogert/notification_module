@@ -76,6 +76,17 @@ public sealed class DeliveryTrackingService
         delivery.ErrorMessage = success ? null : Truncate(errorMessage, 2000);
         delivery.UpdatedAt = now;
 
+        db.BillingDeliveryEvents.Add(new BillingDeliveryEventRecord
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = scheduledNotification.OrganizationId,
+            Provider = provider,
+            ReminderType = scheduledNotification.ReminderType,
+            Status = success ? "Sent" : "Failed",
+            OccurredAt = now,
+            CorrelationId = Guid.NewGuid(),
+        });
+
         await db.SaveChangesAsync(cancellationToken);
         await UpdateScheduledNotificationStatusAsync(db, scheduledNotification.Id, now, cancellationToken);
 

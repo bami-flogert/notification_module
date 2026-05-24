@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\flori\\\\Documents\\\\GitHub\\\\notification_module\" -Force | Format-Table Name, @{Name=\"Type\";Expression={if\\($_.PSIsContainer\\){\"Dir\"}else{\"File\"}}} -AutoSize)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\flori\\\\Documents\\\\GitHub\\\\notification_module\\\\src\" -Recurse -Force | Select-Object FullName | ForEach-Object { $_.FullName.Replace\\('C:\\\\Users\\\\flori\\\\Documents\\\\GitHub\\\\notification_module\\\\', ''\\) })"
+    ]
+  }
+}

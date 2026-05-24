@@ -47,17 +47,14 @@ partial class NotificationDbContextModelSnapshot : ModelSnapshot
                 .HasColumnType("uuid");
 
             b.Property<string>("PatientEmail")
-                .IsRequired()
                 .HasMaxLength(320)
                 .HasColumnType("character varying(320)");
 
             b.Property<string>("PatientName")
-                .IsRequired()
                 .HasMaxLength(200)
                 .HasColumnType("character varying(200)");
 
             b.Property<string>("PatientPhone")
-                .IsRequired()
                 .HasMaxLength(64)
                 .HasColumnType("character varying(64)");
 
@@ -65,6 +62,9 @@ partial class NotificationDbContextModelSnapshot : ModelSnapshot
                 .IsRequired()
                 .HasMaxLength(128)
                 .HasColumnType("character varying(128)");
+
+            b.Property<DateTimeOffset?>("PiiPurgedAt")
+                .HasColumnType("timestamp with time zone");
 
             b.Property<string>("RawSourcePayload")
                 .HasColumnType("jsonb");
@@ -92,7 +92,47 @@ partial class NotificationDbContextModelSnapshot : ModelSnapshot
 
             b.HasIndex("OrganizationId", "StartDateTime");
 
+            b.HasIndex("PiiPurgedAt", "CreatedAt");
+
             b.ToTable("appointments");
+        });
+
+        modelBuilder.Entity("NotificationModule.Shared.Persistence.BillingDeliveryEventRecord", b =>
+        {
+            b.Property<Guid>("Id")
+                .HasColumnType("uuid");
+
+            b.Property<Guid>("OrganizationId")
+                .HasColumnType("uuid");
+
+            b.Property<string>("Provider")
+                .IsRequired()
+                .HasMaxLength(64)
+                .HasColumnType("character varying(64)");
+
+            b.Property<string>("ReminderType")
+                .IsRequired()
+                .HasMaxLength(32)
+                .HasColumnType("character varying(32)");
+
+            b.Property<string>("Status")
+                .IsRequired()
+                .HasMaxLength(32)
+                .HasColumnType("character varying(32)");
+
+            b.Property<DateTimeOffset>("OccurredAt")
+                .HasColumnType("timestamp with time zone");
+
+            b.Property<Guid>("CorrelationId")
+                .HasColumnType("uuid");
+
+            b.HasKey("Id");
+
+            b.HasIndex("OccurredAt");
+
+            b.HasIndex("OrganizationId", "OccurredAt");
+
+            b.ToTable("billing_delivery_events");
         });
 
         modelBuilder.Entity("NotificationModule.Shared.Persistence.OrganizationRecord", b =>
