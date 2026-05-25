@@ -79,14 +79,22 @@ public class NotificationWorker : BackgroundService
 
                     mappedProvider = NotificationQueueMapping.TryGetProviderName(queue);
                     var json = Encoding.UTF8.GetString(ea.Body.ToArray());
-                    var message = JsonSerializer.Deserialize<AppointmentMessage>(json,
-                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    AppointmentMessage? message;
+                    try
+                    {
+                        message = JsonSerializer.Deserialize<AppointmentMessage>(
+                            json,
+                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    }
+                    catch (JsonException)
+                    {
+                        MoveToDeadLetterForDeserialize(channel, queue, ea, mappedProvider);
+                        return;
+                    }
 
                     if (message is null)
                     {
-                        RecordMessageFailed(queue, mappedProvider, "deserialize");
-                        PublishToDlq(channel, queue, ea, "deserialize");
-                        channel.BasicAck(ea.DeliveryTag, multiple: false);
+                        MoveToDeadLetterForDeserialize(channel, queue, ea, mappedProvider);
                         return;
                     }
 
@@ -144,6 +152,17 @@ public class NotificationWorker : BackgroundService
         }
 
         await Task.Delay(Timeout.Infinite, stoppingToken);
+    }
+
+    private void MoveToDeadLetterForDeserialize(
+        IModel channel,
+        string queue,
+        BasicDeliverEventArgs ea,
+        string? mappedProvider)
+    {
+        RecordMessageFailed(queue, mappedProvider, "deserialize");
+        PublishToDlq(channel, queue, ea, "deserialize");
+        channel.BasicAck(ea.DeliveryTag, multiple: false);
     }
 
     private void PublishToDlq(IModel channel, string queue, BasicDeliverEventArgs ea, string reason)

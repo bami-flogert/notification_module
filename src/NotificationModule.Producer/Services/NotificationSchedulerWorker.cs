@@ -116,6 +116,7 @@ public sealed class NotificationSchedulerWorker : BackgroundService
                 StartDateTime = appointment.StartDateTime.UtcDateTime,
                 Status = appointment.Status,
                 OrganizationKey = organization.Key,
+                TimeZone = organization.TimeZone,
                 Location = appointment.Location ?? string.Empty,
                 Instructions = appointment.Instructions ?? string.Empty,
                 ScheduledNotificationId = scheduledNotification.Id,

@@ -1,6 +1,8 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
+using NotificationModule.Shared;
 using NotificationModule.Shared.Observability;
 using NotificationModule.Shared.Models;
 using NotificationModule.Shared.Persistence;
@@ -9,6 +11,8 @@ namespace NotificationModule.Producer.Services;
 
 public sealed class AppointmentIngestionService
 {
+    private static readonly ConcurrentDictionary<string, byte> TimeZoneWarningsLogged = new(StringComparer.OrdinalIgnoreCase);
+
     private const string PendingStatus = ScheduledNotificationStatuses.Pending;
     private const string CancelledStatus = ScheduledNotificationStatuses.Cancelled;
 
@@ -54,7 +58,7 @@ public sealed class AppointmentIngestionService
 
         await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
         var organization = await EnsureOrganizationAsync(db, resolvedOrganizationKey, now, cancellationToken);
-        var startDateTime = NormalizeToUtc(message.StartDateTime, organization.TimeZone);
+        var startDateTime = NormalizeToUtc(message.StartDateTime, organization.TimeZone, organization.Key);
 
         var appointment = await db.Appointments
             .SingleOrDefaultAsync(
@@ -271,27 +275,33 @@ public sealed class AppointmentIngestionService
         || string.Equals(status, "Canceled", StringComparison.OrdinalIgnoreCase)
         || string.Equals(status, "cancelled", StringComparison.OrdinalIgnoreCase);
 
-    private DateTimeOffset NormalizeToUtc(DateTime value, string? timeZone)
+    private DateTimeOffset NormalizeToUtc(DateTime value, string? timeZone, string organizationKey)
     {
         if (value.Kind != DateTimeKind.Unspecified)
             return new DateTimeOffset(value.ToUniversalTime());
 
-        if (!string.IsNullOrWhiteSpace(timeZone))
+        if (string.IsNullOrWhiteSpace(timeZone))
         {
-            try
-            {
-                var tz = TimeZoneInfo.FindSystemTimeZoneById(timeZone);
-                return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(value, tz));
-            }
-            catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
-            {
-                _logger.LogWarning(
-                    "Timezone '{TimeZone}' is invalid or unknown; falling back to UTC for appointment start time.",
-                    timeZone);
-            }
+            WarnTimeZoneFallbackOnce(organizationKey, "missing or empty");
+            return new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc));
         }
 
+        if (OrganizationTimeZone.TryGetTimeZoneInfo(timeZone, out var tz))
+            return OrganizationTimeZone.ConvertUnspecifiedLocalToUtc(value, tz);
+
+        WarnTimeZoneFallbackOnce(organizationKey, $"invalid or unknown timezone '{timeZone}'");
         return new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc));
+    }
+
+    private void WarnTimeZoneFallbackOnce(string organizationKey, string reason)
+    {
+        if (!TimeZoneWarningsLogged.TryAdd(organizationKey, 0))
+            return;
+
+        _logger.LogWarning(
+            "Organization '{OrganizationKey}' timezone is {Reason}; falling back to UTC for appointment start time.",
+            organizationKey,
+            reason);
     }
 
     private static string? EmptyToNull(string? value) =>

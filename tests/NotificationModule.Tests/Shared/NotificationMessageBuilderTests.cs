@@ -71,7 +71,7 @@ public sealed class NotificationMessageBuilderTests
     public void Build_includes_instructions_on_new_line()
     {
         var result = NotificationMessageBuilder.Build(BaseMessage());
-        Assert.Contains("\nPlease bring your insurance card.", result);
+        Assert.Contains("\nInstructions: Please bring your insurance card.", result);
     }
 
     [Fact]

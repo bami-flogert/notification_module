@@ -60,6 +60,32 @@ public sealed class DeliveryTrackingServiceTests
     }
 
     [Fact]
+    public async Task RecordAsync_writes_billing_event_without_pii()
+    {
+        var (dbFactory, scheduledNotificationId) = await SeedScheduledNotificationAsync();
+        var service = CreateService(dbFactory);
+        var message = CreateMessage(scheduledNotificationId);
+
+        await service.RecordAsync(message, "SwiftSend", success: true, errorMessage: null, CancellationToken.None);
+
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var billing = db.BillingDeliveryEvents.Single();
+
+        Assert.Equal("SwiftSend", billing.Provider);
+        Assert.Equal("1h", billing.ReminderType);
+        Assert.Equal("Sent", billing.Status);
+        Assert.NotEqual(Guid.Empty, billing.CorrelationId);
+        Assert.NotEqual(Guid.Empty, billing.OrganizationId);
+        Assert.NotEqual(message.AppointmentUuid, billing.CorrelationId.ToString());
+
+        var billingPropertyNames = billing.GetType().GetProperties().Select(p => p.Name).ToArray();
+        Assert.DoesNotContain("PatientName", billingPropertyNames);
+        Assert.DoesNotContain("PatientPhone", billingPropertyNames);
+        Assert.DoesNotContain("PatientEmail", billingPropertyNames);
+        Assert.DoesNotContain("AppointmentUuid", billingPropertyNames);
+    }
+
+    [Fact]
     public async Task RecordAsync_marks_scheduled_notification_failed_when_all_chain_providers_fail()
     {
         var (dbFactory, scheduledNotificationId) = await SeedScheduledNotificationAsync(

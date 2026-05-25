@@ -36,7 +36,6 @@ public class SwiftSendProvider : INotificationProvider
         var orgSecrets = await _secrets.GetForOrganizationAsync(message.OrganizationKey, ct);
 
         var content = NotificationMessageBuilder.Build(message);
-        _logger.LogInformation("SwiftSend message text: {Content}", content);
 
         var body = new
         {
