@@ -16,6 +16,7 @@ public record AppointmentMessage
     public DateTime StartDateTime { get; init; }
     public string Status          { get; init; } = string.Empty;
     public string OrganizationKey { get; init; } = string.Empty;
+    public string TimeZone        { get; init; } = string.Empty;
     public string Location        { get; init; } = string.Empty;
     public string Instructions    { get; init; } = string.Empty;
     public Guid? ScheduledNotificationId { get; init; }

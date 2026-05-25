@@ -110,9 +110,9 @@ public sealed class NotificationSchedulerWorker : BackgroundService
             {
                 AppointmentUuid = appointment.AppointmentUuid,
                 PatientUuid = appointment.PatientUuid,
-                PatientName = appointment.PatientName,
-                PatientPhone = appointment.PatientPhone,
-                PatientEmail = appointment.PatientEmail,
+                PatientName = appointment.PatientName ?? string.Empty,
+                PatientPhone = appointment.PatientPhone ?? string.Empty,
+                PatientEmail = appointment.PatientEmail ?? string.Empty,
                 StartDateTime = appointment.StartDateTime.UtcDateTime,
                 Status = appointment.Status,
                 OrganizationKey = organization.Key,

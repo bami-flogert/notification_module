@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using NotificationModule.Consumer.Secrets;
+using NotificationModule.Shared;
 using NotificationModule.Shared.Models;
 using NotificationModule.Shared.Observability;
 
@@ -45,8 +46,7 @@ public class AsyncFlowProvider : INotificationProvider
         var submitBody = new
         {
             destination = message.PatientPhone,
-            content =
-                $"Appointment reminder for {message.PatientName}: {message.StartDateTime:dd MMM yyyy HH:mm} UTC — {message.Status}",
+            content = NotificationMessageBuilder.Build(message),
             priority = "normal",
         };
 

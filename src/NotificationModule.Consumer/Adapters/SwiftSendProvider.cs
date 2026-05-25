@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using NotificationModule.Consumer.Secrets;
+using NotificationModule.Shared;
 using NotificationModule.Shared.Models;
 using NotificationModule.Shared.Observability;
 
@@ -34,21 +35,20 @@ public class SwiftSendProvider : INotificationProvider
     {
         var orgSecrets = await _secrets.GetForOrganizationAsync(message.OrganizationKey, ct);
 
+        var content = NotificationMessageBuilder.Build(message);
+        _logger.LogInformation("SwiftSend message text: {Content}", content);
+
         var body = new
         {
             type = "SMS",
             recipients = new[] { message.PatientPhone },
-            content = FormatSmsText(message),
+            content,
         };
 
         using var response = await PostJsonWithRetryAsync("/swiftsend", body, orgSecrets.SwiftSend.ApiKey, ct);
         ProviderLogging.LogHttpResult(_logger, ChannelName, message, (int)response.StatusCode);
         response.EnsureSuccessStatusCode();
     }
-
-    private static string FormatSmsText(AppointmentMessage m) =>
-        $"Hi {m.PatientName}, your appointment is confirmed for " +
-        $"{m.StartDateTime:dd MMM yyyy HH:mm} UTC. Status: {m.Status}.";
 
     private async Task<HttpResponseMessage> PostJsonWithRetryAsync(
         string path,

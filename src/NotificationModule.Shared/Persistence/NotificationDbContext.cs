@@ -15,6 +15,7 @@ public class NotificationDbContext : DbContext
     public DbSet<AppointmentRecord> Appointments => Set<AppointmentRecord>();
     public DbSet<ScheduledNotificationRecord> ScheduledNotifications => Set<ScheduledNotificationRecord>();
     public DbSet<NotificationDeliveryRecord> NotificationDeliveries => Set<NotificationDeliveryRecord>();
+    public DbSet<BillingDeliveryEventRecord> BillingDeliveryEvents => Set<BillingDeliveryEventRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -71,9 +72,9 @@ public class NotificationDbContext : DbContext
             e.HasKey(x => x.Id);
             e.Property(x => x.AppointmentUuid).HasMaxLength(128).IsRequired();
             e.Property(x => x.PatientUuid).HasMaxLength(128).IsRequired();
-            e.Property(x => x.PatientName).HasMaxLength(200).IsRequired();
-            e.Property(x => x.PatientPhone).HasMaxLength(64).IsRequired();
-            e.Property(x => x.PatientEmail).HasMaxLength(320).IsRequired();
+            e.Property(x => x.PatientName).HasMaxLength(200);
+            e.Property(x => x.PatientPhone).HasMaxLength(64);
+            e.Property(x => x.PatientEmail).HasMaxLength(320);
             e.Property(x => x.StartDateTime).IsRequired();
             e.Property(x => x.Status).HasMaxLength(64).IsRequired();
             e.Property(x => x.Location).HasMaxLength(250);
@@ -84,6 +85,7 @@ public class NotificationDbContext : DbContext
             e.Property(x => x.UpdatedAt).IsRequired();
             e.HasIndex(x => new { x.OrganizationId, x.AppointmentUuid }).IsUnique();
             e.HasIndex(x => new { x.OrganizationId, x.StartDateTime });
+            e.HasIndex(x => new { x.PiiPurgedAt, x.CreatedAt });
             e.HasOne(x => x.Organization)
                 .WithMany(x => x.Appointments)
                 .HasForeignKey(x => x.OrganizationId)
@@ -133,6 +135,19 @@ public class NotificationDbContext : DbContext
                 .WithMany(x => x.Deliveries)
                 .HasForeignKey(x => x.ScheduledNotificationId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BillingDeliveryEventRecord>(e =>
+        {
+            e.ToTable("billing_delivery_events");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Provider).HasMaxLength(64).IsRequired();
+            e.Property(x => x.ReminderType).HasMaxLength(32).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(32).IsRequired();
+            e.Property(x => x.OccurredAt).IsRequired();
+            e.Property(x => x.CorrelationId).IsRequired();
+            e.HasIndex(x => new { x.OrganizationId, x.OccurredAt });
+            e.HasIndex(x => x.OccurredAt);
         });
     }
 }
