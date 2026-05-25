@@ -87,6 +87,7 @@ Het platte JSON-endpoint `POST /api/appointments` blijft beschikbaar maar is ver
 | Uitbreiden (provider, nieuw meldingtype, tekenset) | [`docs/EXTENSIBILITY.md`](docs/EXTENSIBILITY.md) |
 | Betrouwbaarheid (DLQ, retries) | [`docs/RELIABILITY.md`](docs/RELIABILITY.md) |
 | Testrapportage (betrouwbaarheid & uitbreidbaarheid) | [`docs/TESTRAPPORT.md`](docs/TESTRAPPORT.md) |
+| Performancerapportage (throughput & monitoring) | [`docs/PERFORMANCERAPPORT.md`](docs/PERFORMANCERAPPORT.md) |
 | Architectuur (C4 diagrammen) | [`docs/c4/expl.md`](docs/c4/expl.md) |
 | Architectuurbeslissingen | [`docs/madr/README.md`](docs/madr/README.md) |
 

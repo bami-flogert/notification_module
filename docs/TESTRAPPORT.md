@@ -5,9 +5,10 @@
 
 | Onderdeel                                                    | Status                          | Vertrouwen                           |
 | ------------------------------------------------------------ | ------------------------------- | ------------------------------------ |
-| Betrouwbaarheid (retry, DLQ, fallback, encryptie, retention) | Sterk in unit-tests + deels E2E | Hoog op codepad; E2E na schone stack |
+| Betrouwbaarheid (retry, DLQ, fallback, encryptie, retention) | Sterk in unit-tests + E2E-script | Hoog (121 unit + 43 systeemchecks groen) |
 | Uitbreidbaarheid (providers, tenants, FHIR, rapportage)      | Gedekt in unit/API-tests        | Hoog                                 |
-| Volledige stack + observability                              | Script + checklist              | Hoog                                 |
+| Volledige stack + observability                              | Script + checklist              | Hoog (43/43 geautomatiseerde checks) |
+| Performance / schaalbaarheid (Prometheus + burst)            | Performancerapport              | Gedocumenteerd (2 scenario's)        |
 
 
 Dieper ontwerp en maatregelen staan elders — hier alleen **bewijs via tests**:
@@ -15,6 +16,7 @@ Dieper ontwerp en maatregelen staan elders — hier alleen **bewijs via tests**:
 - [RELIABILITY.md](RELIABILITY.md) — retries, DLQ, fallback
 - [EXTENSIBILITY.md](EXTENSIBILITY.md) — providers, multi-tenancy, tekenset
 - [fmea/FMEA.md](fmea/FMEA.md) — failure modes per component
+- [PERFORMANCERAPPORT.md](PERFORMANCERAPPORT.md) — baseline + burst metingen, koppeling FMEA ↔ Grafana
 
 ---
 
@@ -93,13 +95,14 @@ Handmatige follow-ups (chaos, elk ComWorld-provider, Grafana-panelen) staan in d
 Typische volgorde (stack eerst, dan tests):
 
 ```powershell
-# 1. Stack (eerste keer of na schema-wijziging: -v voor schone volumes)
+# 1. Schone stack (aanbevolen vóór demo of na schema-wijziging)
+docker compose down -v
 docker compose --env-file env.example up --build -d
 
 # 2. Unit tests — verwacht: Passed: 121, Failed: 0
 dotnet test NotificationModule.sln
 
-# 3. Systeemtests (Windows)
+# 3. Systeemtests (Windows) — verwacht: PASS=43 FAIL=0
 .\scripts\comprehensive-test.ps1
 ```
 
@@ -111,12 +114,14 @@ Volledige checklist inclusief handmatige stappen: [TEST_CHECKLIST.md](../TEST_CH
 
 ## Resultaten van de laatste run
 
+Uitgevoerd volgens [Zelf draaien](#zelf-draaien): `docker compose down -v`, schone stack, `dotnet test`, daarna `.\scripts\comprehensive-test.ps1`.
 
-| Uitvoering           | Datum      | Passed | Failed | Opmerking                                        |
-| -------------------- | ---------- | ------ | ------ | ------------------------------------------------ |
-| `dotnet test`        | 2026-05-25 | 121    | 0      | Lokaal (`Release`)                               |
-| `comprehensive-test` | 2026-05-25 | 18     | 2      | Zie [Bekende issue](#bekende-issue-bij-deze-run) |
-| CI (GitHub Actions)  | —          | —      | —      | `dotnet test` + Docker build bij elke PR/push    |
+
+| Uitvoering           | Datum      | Passed | Failed | Opmerking                         |
+| -------------------- | ---------- | ------ | ------ | --------------------------------- |
+| `dotnet test`        | 2026-05-25 | 121    | 0      | Lokaal (`Release`)                |
+| `comprehensive-test` | 2026-05-25 | 43     | 0      | Na `docker compose down -v`       |
+| CI (GitHub Actions)  | —          | —      | —      | `dotnet test` + Docker build bij elke PR/push |
 
 
 Voorbeeld `dotnet test`-uitvoer
@@ -125,23 +130,13 @@ Voorbeeld `dotnet test`-uitvoer
 Passed!  - Failed: 0, Passed: 121, Skipped: 0, Total: 121
 ```
 
+Voorbeeld `comprehensive-test`-samenvatting
 
-
-### Bekende issue bij deze run
-
-**Symptoom:** AUTH3 en AUTH5 gaven geen 202 na geldige org-key.
-
-**Oorzaak:** Bestaand Postgres-volume miste kolom `PiiPurgedAt`. Entity Framework dacht dat migraties al waren toegepast; de database-schema’s liepen achter op de code.
-
-**Oplossing:** Volume legen en stack opnieuw opbouwen:
-
-```powershell
-docker compose down -v
-docker compose --env-file env.example up --build -d
-.\scripts\comprehensive-test.ps1
+```
+==> Summary: PASS=43 FAIL=0 SKIP=0
 ```
 
-**Interpretatie:** Geen regressie in auth-logica; omgevings-/migratie-drift. Voor inlevering of demo: altijd eerst schone volumes of expliciete migratie-run.
+Belangrijkste systeemchecks in deze run: AUTH1–AUTH3, AUTH5 (202 na geldige key), E3/E13 (FHIR + legacy intake), MQ3 (`Sending via` in consumer-logs), M1/M9/M10/M12 (Prometheus-counters), T1 (Jaeger), L1 (Loki).
 
 ---
 
@@ -149,7 +144,7 @@ docker compose --env-file env.example up --build -d
 
 We zijn **overtuigd van de kern** op basis van 121 geautomatiseerde unit/integratietests: scheduler-gedrag, message-broker policies, provider-fallback, encryptie en retention zijn expliciet afgedekt. **Uitbreidbaarheid** volgt uit `INotificationProvider`, queue-mapping per kanaal, multi-tenant beleid en een gedocumenteerd pad voor nieuwe meldingtypes — elk met gerichte tests.
 
-Het **systeemscript** bevestigt de volledige Docker-keten (intake → queue → consumer → metrics/traces). De laatste run was bijna volledig groen; de twee failures zijn verklaard en oplosbaar met een schone database. **Voor een definitieve “alles groen”-claim:** `docker compose down -v`, comprehensive-test opnieuw, en CI op `main` controleren.
+Het **systeemscript** bevestigt de volledige Docker-keten (intake → queue → consumer → metrics/traces/logs). De laatste run na schone volumes was **volledig groen** (43 geautomatiseerde checks, 0 failures). Voor demo of inlevering: start met `docker compose down -v` zodat Postgres-migraties en seed opnieuw worden toegepast; het script wacht op producer `/ready` en herstart de consumer indien die te vroeg startte.
 
 ---
 

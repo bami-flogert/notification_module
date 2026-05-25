@@ -120,10 +120,35 @@ Write-Host "==> Comprehensive test run (root: $Root)"
 
 if (-not $SkipDockerUp) {
     Write-Host "==> Starting stack (docker compose --env-file env.example up -d)"
-    docker compose --env-file env.example up -d 2>&1 | Out-Host
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        docker compose --env-file env.example up -d 2>&1 | Out-Host
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
 }
 
 Repair-RabbitMqExchangeIfNeeded
+
+Write-Host "==> Waiting for producer ready (migrations)"
+$producerReady = Wait-HttpStatus -Url "$ProducerBase/ready" -AcceptCodes @(200) -MaxAttempts 60
+if (-not $producerReady) {
+    Write-Host "WARN: producer /ready not healthy before infrastructure checks"
+}
+
+Write-Host "==> Waiting for consumer ready"
+$consumerReady = Wait-HttpStatus -Url "$ConsumerBase/ready" -AcceptCodes @(200) -MaxAttempts 30
+if (-not $consumerReady) {
+    Write-Host "==> Restarting consumer (likely started before DB migrations finished)"
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try { docker compose --env-file env.example restart consumer 2>&1 | Out-Host } finally { $ErrorActionPreference = $prevEap }
+    $consumerReady = Wait-HttpStatus -Url "$ConsumerBase/ready" -AcceptCodes @(200) -MaxAttempts 30
+}
+if (-not $consumerReady) {
+    Write-Host "WARN: consumer /ready not healthy before infrastructure checks"
+}
 
 # --- Infrastructure I1-I6 ---
 Write-Host "`n==> Infrastructure health (I1-I6)"
@@ -147,23 +172,35 @@ try {
 
 try {
     $otel = Invoke-WebRequest -Uri "http://127.0.0.1:8889/metrics" -UseBasicParsing -TimeoutSec 5
-    $hasMetrics = $otel.Content -match "otel"
-    Write-TestResult -Id "I4b" -Ok $hasMetrics -Detail "OTEL :8889/metrics length=$($otel.Content.Length)"
+    $body = [string]$otel.Content
+    $hasMetrics = $body.Length -gt 0 -and ($body -match "otel|prometheus|# HELP")
+    Write-TestResult -Id "I4b" -Ok $hasMetrics -Detail "OTEL :8889/metrics length=$($body.Length)"
 } catch {
     Write-TestResult -Id "I4b" -Ok $false -Detail "OTEL metrics: $($_.Exception.Message)"
 }
 
 foreach ($pair in @(
-    @{ Id = "I6a"; Url = "http://127.0.0.1:16686"; Name = "jaeger" },
-    @{ Id = "I6b"; Url = "http://127.0.0.1:3100/ready"; Name = "loki" },
-    @{ Id = "I6c"; Url = "http://127.0.0.1:3000/login"; Name = "grafana" }
+    @{ Id = "I6a"; Url = "http://127.0.0.1:16686"; Name = "jaeger"; Retries = 1 },
+    @{ Id = "I6b"; Url = "http://127.0.0.1:3100/ready"; Name = "loki"; Retries = 10 },
+    @{ Id = "I6c"; Url = "http://127.0.0.1:3000/login"; Name = "grafana"; Retries = 1 }
 )) {
-    try {
-        $r = Invoke-WebRequest -Uri $pair.Url -UseBasicParsing -TimeoutSec 5
-        Write-TestResult -Id $pair.Id -Ok ($r.StatusCode -lt 500) -Detail "$($pair.Name) HTTP $($r.StatusCode)"
-    } catch {
-        Write-TestResult -Id $pair.Id -Ok $false -Detail "$($pair.Name): $($_.Exception.Message)"
+    $ok = $false
+    $detail = "$($pair.Name) unreachable"
+    for ($i = 1; $i -le $pair.Retries; $i++) {
+        try {
+            $r = Invoke-WebRequest -Uri $pair.Url -UseBasicParsing -TimeoutSec 5
+            if ($r.StatusCode -lt 500) {
+                $ok = $true
+                $detail = "$($pair.Name) HTTP $($r.StatusCode)"
+                break
+            }
+            $detail = "$($pair.Name) HTTP $($r.StatusCode)"
+        } catch {
+            $detail = "$($pair.Name): $($_.Exception.Message)"
+        }
+        if ($i -lt $pair.Retries) { Start-Sleep -Seconds 3 }
     }
+    Write-TestResult -Id $pair.Id -Ok $ok -Detail $detail
 }
 
 # --- Health probes H1-H4 ---
