@@ -24,6 +24,7 @@ builder.Services.AddSingleton<FhirAppointmentMapper>();
 builder.Services.AddSingleton<FhirAppointmentValidator>();
 builder.Services.AddSingleton<OrganizationApiKeyService>();
 builder.Services.AddSingleton<OrganizationProviderPolicyService>();
+builder.Services.AddSingleton<BillingDeliveriesReportService>();
 builder.Services.AddScoped<AppointmentApiKeyAuthFilter>();
 builder.Services.AddHostedService<NotificationSchedulerWorker>();
 builder.Services.AddHostedService<DataRetentionWorker>();
