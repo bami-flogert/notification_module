@@ -1,76 +1,76 @@
-# Logging policy
+# Loggingbeleid
 
-Application logs must not contain directly identifiable patient data (PII). Logs exist for operations and troubleshooting; patient names, phone numbers, email addresses, and raw FHIR payloads are stored in the database only for as long as retention policy allows—not in log streams.
+Applicatielogs mogen geen direct identificeerbare patiëntgegevens (PII) bevatten. Logs zijn bedoeld voor bedrijfsvoering en troubleshooting; patiëntnamen, telefoonnummers, e-mailadressen en ruwe FHIR-payloads worden alleen in de database bewaard zolang het retentiebeleid dat toestaat — niet in logstreams.
 
-## Allowed fields
+## Toegestane velden
 
-Use only non-identifying correlation and operational fields in log messages and structured log properties:
+Gebruik alleen niet-identificerende correlatie- en operationele velden in logberichten en gestructureerde logeigenschappen:
 
-| Field | Example | Where used |
-|-------|---------|------------|
-| `AppointmentUuid` | `apt-001` | Producer intake, consumer dispatch |
+| Veld | Voorbeeld | Waar gebruikt |
+|------|-----------|---------------|
+| `AppointmentUuid` | `apt-001` | Producer-intake, consumer-dispatch |
 | `OrganizationKey` | `demo-clinic` | Producer, consumer, providers |
 | `ScheduledNotificationId` | GUID | Scheduler, consumer, providers |
-| `Provider` / channel name | `SwiftSend` | Consumer dispatch, provider adapters |
-| HTTP status code | `200`, `502` | Provider adapters after outbound call |
-| `ScheduledNotificationId` (fallback chain) | GUID | Consumer worker on provider fallback |
-| Infrastructure | RabbitMQ host/port, queue name | Connection/bootstrap only |
-| Counts / booleans | `Created: true`, `Queued 3` | Scheduler, ingestion |
+| `Provider` / kanaalnaam | `SwiftSend` | Consumer-dispatch, provider-adapters |
+| HTTP-statuscode | `200`, `502` | Provider-adapters na uitgaande aanroep |
+| `ScheduledNotificationId` (fallback-keten) | GUID | Consumer-worker bij provider-fallback |
+| Infrastructuur | RabbitMQ host/port, wachtrijnaam | Alleen bij connectie/bootstrap |
+| Tellingen / booleans | `Created: true`, `Queued 3` | Scheduler, ingestion |
 
-OpenTelemetry span tags follow the same rule: `appointment.uuid`, `organization.key`, `provider`, `scheduled_notification.id`, `dispatch.status`, etc.
+OpenTelemetry-span-tags volgen dezelfde regel: `appointment.uuid`, `organization.key`, `provider`, `scheduled_notification.id`, `dispatch.status`, enz.
 
-## Forbidden fields
+## Verboden velden
 
-Never log these (including as structured log arguments or exception message text built from request data):
+Log deze nooit (ook niet als gestructureerde logargumenten of exception-tekst opgebouwd uit requestdata):
 
-| Forbidden | Reason |
-|-----------|--------|
-| `PatientName` | Direct identifier |
-| `PatientPhone` | Direct identifier |
-| `PatientEmail` | Direct identifier |
-| `PatientUuid` | Patient reference (use `AppointmentUuid` for correlation) |
-| Raw FHIR JSON / request body | May contain all of the above |
-| `RawSourcePayload` | Serialized appointment message with PII |
-| Provider request/response bodies | SMS/email content includes patient name and phone |
-| API keys, JWT tokens, client secrets | Credentials |
+| Verboden | Reden |
+|----------|-------|
+| `PatientName` | Directe identificatie |
+| `PatientPhone` | Directe identificatie |
+| `PatientEmail` | Directe identificatie |
+| `PatientUuid` | Patiëntreferentie (gebruik `AppointmentUuid` voor correlatie) |
+| Ruwe FHIR JSON / request body | Kan al het bovenstaande bevatten |
+| `RawSourcePayload` | Geserialiseerd afspraakbericht met PII |
+| Provider request/response bodies | SMS/e-mailinhoud bevat patiëntnaam en telefoon |
+| API-keys, JWT-tokens, client secrets | Credentials |
 
-## Component guidelines
+## Richtlijnen per component
 
 ### Producer — `FhirAppointmentController`
 
-- Log appointment UUID and organization key on intake.
-- Do **not** log patient display name, phone, email, or the incoming FHIR JSON body.
+- Log afspraak-UUID en organizationsleutel bij intake.
+- Log **geen** patiëntweergavenaam, telefoon, e-mail of de binnenkomende FHIR JSON-body.
 
 ### Producer — `AppointmentIngestionService`
 
-- Log `AppointmentUuid`, `OrganizationKey`, and whether the row was created.
-- Do not log serialized `AppointmentMessage` or `RawSourcePayload`.
+- Log `AppointmentUuid`, `OrganizationKey` en of de rij is aangemaakt.
+- Log geen geserialiseerd `AppointmentMessage` of `RawSourcePayload`.
 
-### Consumer — provider adapters
+### Consumer — provider-adapters
 
-Each adapter (`SwiftSendProvider`, `LegacyLinkProvider`, `SecurePostProvider`, `AsyncFlowProvider`) logs one line per outbound HTTP result via `ProviderLogging.LogHttpResult`:
+Elke adapter (`SwiftSendProvider`, `LegacyLinkProvider`, `SecurePostProvider`, `AsyncFlowProvider`) logt één regel per uitgaande HTTP-resultaat via `ProviderLogging.LogHttpResult`:
 
-- Provider name
-- HTTP status code
+- Providernaam
+- HTTP-statuscode
 - `AppointmentUuid`
 - `OrganizationKey`
 - `ScheduledNotificationId`
 
-Retry warnings log attempt count only—no message bodies.
+Retry-waarschuwingen loggen alleen het aantal pogingen — geen message bodies.
 
 ### Consumer — `NotificationDispatcher`
 
-- Log provider name and `AppointmentUuid` on send start, success, and failure.
-- Do not log exception details that embed provider response bodies.
+- Log providernaam en `AppointmentUuid` bij start, succes en mislukking van verzending.
+- Log geen exceptiondetails die provider-responsebodies bevatten.
 
-## Enforcement
+## Handhaving
 
-`tests/NotificationModule.Tests/Security/LogRedactionTests.cs` scans Producer and Consumer source for `LogInformation` / `LogError` (and related) calls that reference forbidden PII property names. CI fails if a violation is found.
+`tests/NotificationModule.Tests/Security/LogRedactionTests.cs` scant Producer- en Consumer-broncode op `LogInformation` / `LogError` (en verwante) aanroepen die verwijzen naar verboden PII-eigenschapsnamen. CI faalt als een overtreding wordt gevonden.
 
-When adding new log statements, prefer opaque IDs and operational metadata. If you need to debug provider payloads locally, use a debugger or temporary logging behind a dev-only flag—do not commit PII-bearing log lines.
+Bij nieuwe logregels: gebruik liever ondoorzichtige ID's en operationele metadata. Als je lokaal provider-payloads wilt debuggen, gebruik een debugger of tijdelijke logging achter een dev-only vlag — commit geen logregels met PII.
 
-## Related
+## Gerelateerd
 
-- Issue #5 — log redaction (assignment backlog)
-- Issue #3 — 14-day PII purge (database retention)
-- `docs/madr/` ADR 0007 — OpenTelemetry logs with Loki
+- Issue #5 — log-redactie (backlog)
+- Issue #3 — 14-dagen PII-purge (databaseretentie)
+- `docs/madr/` ADR 0007 — OpenTelemetry-logs met Loki

@@ -1,52 +1,52 @@
-# Reliability and retries
+# Betrouwbaarheid en retries
 
-This document describes how the notification module handles failures. Issue #13 will extend this file with scheduler retry, provider HTTP retry, fallback republish, and stale `Publishing` recovery.
+Dit document beschrijft hoe de notificatiemodule omgaat met fouten. Issue #13 breidt dit bestand uit met scheduler-retry, provider-HTTP-retry, fallback-republish en herstel van verouderde `Publishing`-status.
 
 ## Dead-letter queues (DLQ)
 
-When a message cannot be processed after the allowed attempts, it is moved to a **dead-letter queue** instead of being discarded.
+Als een bericht na het toegestane aantal pogingen niet verwerkt kan worden, gaat het naar een **dead-letter queue** in plaats van te verdwijnen.
 
-### Queue names
+### Wachtrijnamen
 
-| Provider queue | Dead-letter queue |
-|----------------|-------------------|
+| Provider-wachtrij | Dead-letter queue |
+|-------------------|-------------------|
 | `notifications.swiftsend` | `notifications.swiftsend.dlq` |
 | `notifications.securepost` | `notifications.securepost.dlq` |
 | `notifications.legacylink` | `notifications.legacylink.dlq` |
 | `notifications.asyncflow` | `notifications.asyncflow.dlq` |
 
-Topology is declared at startup by the producer and consumer (`RabbitMqTopology` in `NotificationModule.Shared`).
+De topologie wordt bij opstarten gedeclareerd door producer en consumer (`RabbitMqTopology` in `NotificationModule.Shared`).
 
-### When a message goes to the DLQ
+### Wanneer een bericht naar de DLQ gaat
 
-| Situation | Retries | DLQ reason header (`x-dlq-reason`) |
-|-----------|---------|-------------------------------------|
-| JSON cannot be deserialized to `AppointmentMessage` | None (immediate) | `deserialize` |
-| Processing throws an exception | Up to 3 deliveries (`x-retry-count` 0 → 1 → 2) | `max_retries` |
+| Situatie | Retries | DLQ-reden header (`x-dlq-reason`) |
+|----------|---------|-------------------------------------|
+| JSON kan niet worden gedeserialiseerd naar `AppointmentMessage` | Geen (direct) | `deserialize` |
+| Verwerking gooit een exception | Maximaal 3 deliveries (`x-retry-count` 0 → 1 → 2) | `max_retries` |
 
-**Not** sent to the DLQ: provider dispatch failed but the message was handled (delivery recorded, optional fallback to another provider). That path is intentional.
+**Niet** naar de DLQ: provider-dispatch mislukt maar het bericht is wel afgehandeld (delivery geregistreerd, optionele fallback naar andere provider). Dat pad is bewust zo ontworpen.
 
-### Retry behaviour
+### Retry-gedrag
 
-On a processing exception with `x-retry-count` &lt; 2, the consumer republishes the same body to exchange `appointment.notifications` with an incremented `x-retry-count` and acknowledges the original message. On the third failure (`x-retry-count` ≥ 2), the message is published to the DLQ and the original is acknowledged.
+Bij een verwerkingsfout met `x-retry-count` &lt; 2 publiceert de consumer dezelfde body opnieuw naar exchange `appointment.notifications` met een verhoogde `x-retry-count` en bevestigt het oorspronkelijke bericht. Bij de derde mislukking (`x-retry-count` ≥ 2) gaat het bericht naar de DLQ en wordt het origineel bevestigd.
 
-### Operator recovery (replay from DLQ)
+### Herstel door beheerder (replay vanuit DLQ)
 
-1. Open **RabbitMQ Management** (default: `http://localhost:15672`, guest/guest in dev).
-2. Open the relevant DLQ, e.g. `notifications.swiftsend.dlq`.
-3. **Get messages** and inspect payload and `x-dlq-reason`.
-4. Fix the underlying issue (invalid JSON, missing org secrets, provider outage, etc.).
-5. **Republish** to the main flow:
+1. Open **RabbitMQ Management** (standaard: `http://localhost:15672`, guest/guest in dev).
+2. Open de relevante DLQ, bijv. `notifications.swiftsend.dlq`.
+3. **Get messages** en inspecteer payload en `x-dlq-reason`.
+4. Los het onderliggende probleem op (ongeldige JSON, ontbrekende org-secrets, provider-storing, enz.).
+5. **Republish** naar de hoofdflow:
    - Exchange: `appointment.notifications`
-   - Routing key: provider name (`SwiftSend`, `SecurePost`, `LegacyLink`, or `AsyncFlow`)
-   - Remove or reset `x-retry-count` if you want a fresh retry budget.
-6. **Acknowledge or delete** the DLQ message after a successful replay.
+   - Routing key: providernaam (`SwiftSend`, `SecurePost`, `LegacyLink` of `AsyncFlow`)
+   - Verwijder of reset `x-retry-count` als je een nieuw retry-budget wilt.
+6. **Acknowledge of delete** het DLQ-bericht na een succesvolle replay.
 
 ### Alerting
 
-Prometheus metric: `notification_messages_dlq_total` (tags: `queue`, `provider`, `reason`). A sustained rate &gt; 0 indicates messages need operator attention. See the Grafana dashboard panel **Messages Dead-Lettered Rate**.
+Prometheus-metriek: `notification_messages_dlq_total` (tags: `queue`, `provider`, `reason`). Een aanhoudend tarief &gt; 0 betekent dat berichten aandacht van een beheerder nodig hebben. Zie het Grafana-dashboardpaneel **Messages Dead-Lettered Rate**.
 
-## Related
+## Gerelateerd
 
-- ADR: [0009-dead-letter-queues.md](madr/0009-dead-letter-queues.md), [0010-fhir-integratie.md](madr/0010-fhir-integratie.md) (Dutch)
-- Implementation: `NotificationWorker`, `RabbitMqDeadLetterPublisher`, `RabbitMqMessageFailurePolicy`
+- ADR: [0009-dead-letter-queues.md](madr/0009-dead-letter-queues.md), [0010-fhir-integratie.md](madr/0010-fhir-integratie.md)
+- Implementatie: `NotificationWorker`, `RabbitMqDeadLetterPublisher`, `RabbitMqMessageFailurePolicy`
