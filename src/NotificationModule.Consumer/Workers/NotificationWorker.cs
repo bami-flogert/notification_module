@@ -2,8 +2,10 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using NotificationModule.Consumer.Messaging;
 using NotificationModule.Consumer.Services;
 using NotificationModule.Consumer.Secrets;
+using NotificationModule.Shared.Messaging;
 using NotificationModule.Shared.Models;
 using NotificationModule.Shared.Observability;
 using NotificationModule.Shared.Persistence;
@@ -17,19 +19,11 @@ namespace NotificationModule.Consumer.Workers;
 public class NotificationWorker : BackgroundService
 {
     private static readonly TextMapPropagator Propagator = Propagators.DefaultTextMapPropagator;
-    private const string ExchangeName = "appointment.notifications";
-
-    private static readonly string[] QueueNames =
-    {
-        "notifications.swiftsend",
-        "notifications.securepost",
-        "notifications.legacylink",
-        "notifications.asyncflow"
-    };
 
     private readonly NotificationDispatcher _dispatcher;
     private readonly DeliveryTrackingService _deliveryTracking;
     private readonly RabbitMqRepublisher _republisher;
+    private readonly RabbitMqDeadLetterPublisher _deadLetterPublisher;
     private readonly IDbContextFactory<SecretsDbContext> _dbFactory;
     private readonly IConfiguration _config;
     private readonly ILogger<NotificationWorker> _logger;
@@ -41,6 +35,7 @@ public class NotificationWorker : BackgroundService
         NotificationDispatcher dispatcher,
         DeliveryTrackingService deliveryTracking,
         RabbitMqRepublisher republisher,
+        RabbitMqDeadLetterPublisher deadLetterPublisher,
         IDbContextFactory<SecretsDbContext> dbFactory,
         IConfiguration config,
         ILogger<NotificationWorker> logger)
@@ -48,6 +43,7 @@ public class NotificationWorker : BackgroundService
         _dispatcher = dispatcher;
         _deliveryTracking = deliveryTracking;
         _republisher = republisher;
+        _deadLetterPublisher = deadLetterPublisher;
         _dbFactory = dbFactory;
         _config = config;
         _logger = logger;
@@ -57,7 +53,7 @@ public class NotificationWorker : BackgroundService
     {
         await WaitForRabbitMqAsync(stoppingToken);
 
-        foreach (var queue in QueueNames)
+        foreach (var (queue, _) in RabbitMqTopology.QueueBindings)
         {
             var channel = _connection!.CreateModel();
             channel.BasicQos(prefetchSize: 0, prefetchCount: 1, global: false);
@@ -81,18 +77,27 @@ public class NotificationWorker : BackgroundService
                         ActivityKind.Consumer,
                         parentContext.ActivityContext);
 
+                    mappedProvider = NotificationQueueMapping.TryGetProviderName(queue);
                     var json = Encoding.UTF8.GetString(ea.Body.ToArray());
-                    var message = JsonSerializer.Deserialize<AppointmentMessage>(json,
-                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-                    if (message is null)
+                    AppointmentMessage? message;
+                    try
                     {
-                        RecordMessageFailed(queue, null, "deserialize");
-                        channel.BasicNack(ea.DeliveryTag, multiple: false, requeue: false);
+                        message = JsonSerializer.Deserialize<AppointmentMessage>(
+                            json,
+                            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    }
+                    catch (JsonException)
+                    {
+                        MoveToDeadLetterForDeserialize(channel, queue, ea, mappedProvider);
                         return;
                     }
 
-                    mappedProvider = NotificationQueueMapping.TryGetProviderName(queue);
+                    if (message is null)
+                    {
+                        MoveToDeadLetterForDeserialize(channel, queue, ea, mappedProvider);
+                        return;
+                    }
+
                     RecordMessageReceived(queue, mappedProvider);
 
                     activity?.SetTag("messaging.rabbitmq.queue", queue);
@@ -108,9 +113,38 @@ public class NotificationWorker : BackgroundService
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to process message. Nacking.");
+                    _logger.LogError(
+                        ex,
+                        "Failed to process message from queue {Queue} for provider {Provider}.",
+                        queue,
+                        mappedProvider ?? "unknown");
+
+                    var retryCount = RabbitMqMessageFailurePolicy.GetRetryCount(ea.BasicProperties);
                     RecordMessageFailed(queue, mappedProvider, "exception");
-                    channel.BasicNack(ea.DeliveryTag, multiple: false, requeue: false);
+
+                    if (RabbitMqMessageFailurePolicy.ShouldDeadLetterAfterRetry(retryCount))
+                    {
+                        var reason = retryCount >= RabbitMqMessageFailurePolicy.MaxDeliveryAttempts - 1
+                            ? "max_retries"
+                            : "exception";
+                        PublishToDlq(channel, queue, ea, reason);
+                    }
+                    else
+                    {
+                        var nextRetry = RabbitMqMessageFailurePolicy.GetNextRetryCount(retryCount);
+                        _deadLetterPublisher.RepublishForRetry(
+                            channel,
+                            queue,
+                            ea.Body.ToArray(),
+                            ea.BasicProperties,
+                            nextRetry);
+                        _logger.LogWarning(
+                            "Republishing message to {Queue} with retry count {RetryCount}.",
+                            queue,
+                            nextRetry);
+                    }
+
+                    channel.BasicAck(ea.DeliveryTag, multiple: false);
                 }
             };
 
@@ -118,6 +152,36 @@ public class NotificationWorker : BackgroundService
         }
 
         await Task.Delay(Timeout.Infinite, stoppingToken);
+    }
+
+    private void MoveToDeadLetterForDeserialize(
+        IModel channel,
+        string queue,
+        BasicDeliverEventArgs ea,
+        string? mappedProvider)
+    {
+        RecordMessageFailed(queue, mappedProvider, "deserialize");
+        PublishToDlq(channel, queue, ea, "deserialize");
+        channel.BasicAck(ea.DeliveryTag, multiple: false);
+    }
+
+    private void PublishToDlq(IModel channel, string queue, BasicDeliverEventArgs ea, string reason)
+    {
+        _deadLetterPublisher.PublishToDeadLetterQueue(
+            channel,
+            queue,
+            ea.Body.ToArray(),
+            ea.BasicProperties,
+            reason);
+
+        var provider = NotificationQueueMapping.TryGetProviderName(queue);
+        RecordMessageDlq(queue, provider, reason);
+
+        _logger.LogWarning(
+            "Message moved to dead-letter queue {Dlq} from {Queue} (reason: {Reason}).",
+            RabbitMqTopology.GetDeadLetterQueueName(queue),
+            queue,
+            reason);
     }
 
     private static IEnumerable<string> ExtractTraceContextFromBasicProperties(IBasicProperties properties, string key)
@@ -266,6 +330,24 @@ public class NotificationWorker : BackgroundService
             new KeyValuePair<string, object?>("failure_reason", failureReason));
     }
 
+    private static void RecordMessageDlq(string queue, string? provider, string reason)
+    {
+        if (provider is not null)
+        {
+            NotificationTelemetry.NotificationMessagesDlq.Add(
+                1,
+                new KeyValuePair<string, object?>("queue", queue),
+                new KeyValuePair<string, object?>("provider", provider),
+                new KeyValuePair<string, object?>("reason", reason));
+            return;
+        }
+
+        NotificationTelemetry.NotificationMessagesDlq.Add(
+            1,
+            new KeyValuePair<string, object?>("queue", queue),
+            new KeyValuePair<string, object?>("reason", reason));
+    }
+
     private async Task WaitForRabbitMqAsync(CancellationToken ct)
     {
         var factory = new ConnectionFactory
@@ -283,7 +365,7 @@ public class NotificationWorker : BackgroundService
             {
                 _connection = factory.CreateConnection();
                 using var topologyChannel = _connection.CreateModel();
-                DeclareTopology(topologyChannel);
+                RabbitMqTopology.Declare(topologyChannel);
                 _logger.LogInformation("Connected to RabbitMQ.");
                 return;
             }
@@ -292,19 +374,6 @@ public class NotificationWorker : BackgroundService
                 _logger.LogWarning("RabbitMQ not ready: {Msg}. Retrying in 3s…", ex.Message);
                 await Task.Delay(3000, ct);
             }
-        }
-    }
-
-    private static void DeclareTopology(IModel channel)
-    {
-        channel.ExchangeDeclare(ExchangeName, ExchangeType.Direct, durable: true);
-
-        foreach (var queue in QueueNames)
-        {
-            channel.QueueDeclare(queue, durable: true, exclusive: false, autoDelete: false);
-            var providerName = NotificationQueueMapping.TryGetProviderName(queue)
-                ?? throw new InvalidOperationException($"Queue '{queue}' is not mapped to a provider.");
-            channel.QueueBind(queue, ExchangeName, routingKey: providerName);
         }
     }
 

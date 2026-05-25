@@ -46,8 +46,11 @@ Important columns:
 - `Location`: appointment location.
 - `Instructions`: patient instructions.
 - `RawSourcePayload`: original source payload JSON for debugging/audit.
+- `PiiPurgedAt`: when patient/contact PII columns were cleared by the retention worker (null = not yet purged).
 
 Appointments are unique per organization using `(OrganizationId, AppointmentUuid)`.
+
+After **14 days** without recent activity (`UpdatedAt` or a successful delivery `SentAt`), the producer `DataRetentionWorker` nulls `PatientName`, `PatientPhone`, `PatientEmail`, `Location`, `Instructions`, and `RawSourcePayload`. Correlation IDs (`AppointmentUuid`, `PatientUuid`, `StartDateTime`, `Status`) remain.
 
 ### `scheduled_notifications`
 
@@ -89,12 +92,46 @@ Important columns:
 
 Each scheduled notification can have multiple delivery rows, one per provider.
 
+### `billing_delivery_events`
+
+PII-free billing and audit ledger. One row per delivery attempt (success or failure). No patient name, phone, email, or appointment UUID; no foreign key to `appointments`.
+
+Important columns:
+
+- `Id`: event ID.
+- `OrganizationId`: links to `organizations` (use `organizations.Key` in reports).
+- `Provider`: messaging provider name.
+- `ReminderType`: `24h` or `1h`.
+- `Status`: `Sent` or `Failed`.
+- `OccurredAt`: when the attempt was recorded (maps to sent time when `Status` is `Sent`, failed time when `Failed`).
+- `CorrelationId`: opaque GUID for invoice disputes (not a patient or appointment identifier).
+
+Rows older than **365 days** are deleted by `DataRetentionWorker` (`DataRetention:BillingRetentionDays` in producer config). Operational PII purge does not remove billing events younger than 365 days.
+
+Example billing query (no PII):
+
+```sql
+select
+  o."Key" as organization_key,
+  b."Provider",
+  b."ReminderType",
+  b."Status",
+  b."OccurredAt",
+  b."CorrelationId"
+from billing_delivery_events b
+join organizations o on o."Id" = b."OrganizationId"
+where o."Key" = 'default'
+  and b."OccurredAt" >= now() - interval '30 days'
+order by b."OccurredAt" desc;
+```
+
 ## Relationship Overview
 
 ```mermaid
 erDiagram
     organizations ||--o{ provider_secrets : has
     organizations ||--o{ appointments : owns
+    organizations ||--o{ billing_delivery_events : bills
     appointments ||--o{ scheduled_notifications : schedules
     scheduled_notifications ||--o{ notification_deliveries : records
     appointments ||--o{ notification_deliveries : summarizes
@@ -179,7 +216,7 @@ order by d."UpdatedAt" desc;
 
 ### Recent Delivery Failures (last 1h)
 
-Operational error oversight for administrators (no patient names). Used by the provisioned Grafana panel **Recent Delivery Failures (last 1h)**.
+Operational error oversight for administrators. Used by the provisioned Grafana panel **Recent Delivery Failures (last 1h)**.
 
 ```sql
 select
@@ -209,4 +246,4 @@ limit 50;
 
 The `appointments` table stores patient-identifiable fields (`PatientName`, `PatientPhone`, `PatientEmail`) for outbound messaging. Default admin dashboard SQL in this repo and the provisioned Grafana **Notification Module** dashboard use **`PatientUuid`** and **`AppointmentUuid` only**—not names or contact fields.
 
-Restrict dashboard access per organization. For billing/audit views, prefer `notification_deliveries` joined with organization, provider, status, and timestamps. Expose name, phone, email, instructions, or `RawSourcePayload` only in roles that explicitly require clinical appointment detail.
+Restrict dashboard access per organization. For **billing and invoice reconciliation**, use `billing_delivery_events` (no patient fields). Use `notification_deliveries` only for operational troubleshooting where appointment context is required, and restrict roles that can join to `appointments` for name, phone, email, instructions, or `RawSourcePayload`.

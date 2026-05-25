@@ -1,6 +1,8 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
+using NotificationModule.Shared;
 using NotificationModule.Shared.Observability;
 using NotificationModule.Shared.Models;
 using NotificationModule.Shared.Persistence;
@@ -9,6 +11,8 @@ namespace NotificationModule.Producer.Services;
 
 public sealed class AppointmentIngestionService
 {
+    private static readonly ConcurrentDictionary<string, byte> TimeZoneWarningsLogged = new(StringComparer.OrdinalIgnoreCase);
+
     private const string PendingStatus = ScheduledNotificationStatuses.Pending;
     private const string CancelledStatus = ScheduledNotificationStatuses.Cancelled;
 
@@ -51,13 +55,12 @@ public sealed class AppointmentIngestionService
 
         var resolvedOrganizationKey = ResolveOrganizationKey(organizationKey, message);
         var now = DateTimeOffset.UtcNow;
-        var startDateTime = NormalizeToUtc(message.StartDateTime);
 
         await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
         var organization = await EnsureOrganizationAsync(db, resolvedOrganizationKey, now, cancellationToken);
+        var startDateTime = NormalizeToUtc(message.StartDateTime, organization.TimeZone, organization.Key);
 
         var appointment = await db.Appointments
-            .Include(x => x.ScheduledNotifications)
             .SingleOrDefaultAsync(
                 x => x.OrganizationId == organization.Id && x.AppointmentUuid == message.AppointmentUuid,
                 cancellationToken);
@@ -93,16 +96,18 @@ public sealed class AppointmentIngestionService
         IReadOnlyList<ScheduledReminderPlan> scheduledReminders;
         if (IsCancelled(message.Status))
         {
-            CancelPendingNotifications(appointment, now);
+            await CancelPendingNotificationsInDatabaseAsync(db, appointment.Id, now, cancellationToken);
             scheduledReminders = [];
         }
         else
         {
-            scheduledReminders = RebuildPendingNotifications(
+            scheduledReminders = await RebuildPendingNotificationsAsync(
+                db,
                 appointment,
                 organization.Id,
                 startDateTime,
-                now);
+                now,
+                cancellationToken);
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -113,7 +118,9 @@ public sealed class AppointmentIngestionService
             organization.Key,
             created);
 
-        var pendingCount = appointment.ScheduledNotifications.Count(x => x.Status == PendingStatus);
+        var pendingCount = await db.ScheduledNotifications.CountAsync(
+            x => x.AppointmentId == appointment.Id && x.Status == PendingStatus,
+            cancellationToken);
         var createdNotificationCount = scheduledReminders.Count;
 
         activity?.SetTag("organization.key", organization.Key);
@@ -187,13 +194,15 @@ public sealed class AppointmentIngestionService
         return organization;
     }
 
-    private static IReadOnlyList<ScheduledReminderPlan> RebuildPendingNotifications(
+    private async Task<IReadOnlyList<ScheduledReminderPlan>> RebuildPendingNotificationsAsync(
+        NotificationDbContext db,
         AppointmentRecord appointment,
         Guid organizationId,
         DateTimeOffset startDateTime,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
     {
-        CancelPendingNotifications(appointment, now);
+        await CancelPendingNotificationsInDatabaseAsync(db, appointment.Id, now, cancellationToken);
 
         if (startDateTime <= now)
             return [];
@@ -211,7 +220,7 @@ public sealed class AppointmentIngestionService
             var isCatchUp = idealSendAt <= now;
             var scheduledSendAt = isCatchUp ? now : idealSendAt;
 
-            appointment.ScheduledNotifications.Add(new ScheduledNotificationRecord
+            db.ScheduledNotifications.Add(new ScheduledNotificationRecord
             {
                 Id = Guid.NewGuid(),
                 OrganizationId = organizationId,
@@ -232,13 +241,32 @@ public sealed class AppointmentIngestionService
         return plans;
     }
 
-    private static void CancelPendingNotifications(AppointmentRecord appointment, DateTimeOffset now)
+    private static async Task CancelPendingNotificationsInDatabaseAsync(
+        NotificationDbContext db,
+        Guid appointmentId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
     {
-        foreach (var scheduledNotification in appointment.ScheduledNotifications
-            .Where(x => x.Status == PendingStatus))
+        if (db.Database.IsRelational())
         {
-            scheduledNotification.Status = CancelledStatus;
-            scheduledNotification.UpdatedAt = now;
+            await db.ScheduledNotifications
+                .Where(x => x.AppointmentId == appointmentId && x.Status == PendingStatus)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(x => x.Status, CancelledStatus)
+                        .SetProperty(x => x.UpdatedAt, now),
+                    cancellationToken);
+            return;
+        }
+
+        var pending = await db.ScheduledNotifications
+            .Where(x => x.AppointmentId == appointmentId && x.Status == PendingStatus)
+            .ToListAsync(cancellationToken);
+
+        foreach (var notification in pending)
+        {
+            notification.Status = CancelledStatus;
+            notification.UpdatedAt = now;
         }
     }
 
@@ -247,13 +275,33 @@ public sealed class AppointmentIngestionService
         || string.Equals(status, "Canceled", StringComparison.OrdinalIgnoreCase)
         || string.Equals(status, "cancelled", StringComparison.OrdinalIgnoreCase);
 
-    private static DateTimeOffset NormalizeToUtc(DateTime value)
+    private DateTimeOffset NormalizeToUtc(DateTime value, string? timeZone, string organizationKey)
     {
-        var utc = value.Kind == DateTimeKind.Unspecified
-            ? DateTime.SpecifyKind(value, DateTimeKind.Utc)
-            : value.ToUniversalTime();
+        if (value.Kind != DateTimeKind.Unspecified)
+            return new DateTimeOffset(value.ToUniversalTime());
 
-        return new DateTimeOffset(utc);
+        if (string.IsNullOrWhiteSpace(timeZone))
+        {
+            WarnTimeZoneFallbackOnce(organizationKey, "missing or empty");
+            return new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc));
+        }
+
+        if (OrganizationTimeZone.TryGetTimeZoneInfo(timeZone, out var tz))
+            return OrganizationTimeZone.ConvertUnspecifiedLocalToUtc(value, tz);
+
+        WarnTimeZoneFallbackOnce(organizationKey, $"invalid or unknown timezone '{timeZone}'");
+        return new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc));
+    }
+
+    private void WarnTimeZoneFallbackOnce(string organizationKey, string reason)
+    {
+        if (!TimeZoneWarningsLogged.TryAdd(organizationKey, 0))
+            return;
+
+        _logger.LogWarning(
+            "Organization '{OrganizationKey}' timezone is {Reason}; falling back to UTC for appointment start time.",
+            organizationKey,
+            reason);
     }
 
     private static string? EmptyToNull(string? value) =>

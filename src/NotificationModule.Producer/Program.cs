@@ -24,6 +24,7 @@ builder.Services.AddSingleton<FhirAppointmentValidator>();
 builder.Services.AddSingleton<OrganizationApiKeyService>();
 builder.Services.AddScoped<AppointmentApiKeyAuthFilter>();
 builder.Services.AddHostedService<NotificationSchedulerWorker>();
+builder.Services.AddHostedService<DataRetentionWorker>();
 builder.Services.AddHealthChecks()
     .AddCheck("live", () => HealthCheckResult.Healthy(), tags: ["live"])
     .AddNpgSql(connectionString, name: "notification-db", tags: ["ready"])

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using NotificationModule.Consumer.Adapters;
 using NotificationModule.Consumer.Secrets;
+using NotificationModule.Consumer.Messaging;
 using NotificationModule.Consumer.Services;
 using NotificationModule.Consumer.Workers;
 using NotificationModule.Shared.Observability;
@@ -32,6 +33,7 @@ builder.Services.AddSingleton<INotificationProvider, AsyncFlowProvider>();
 builder.Services.AddSingleton<NotificationDispatcher>();
 builder.Services.AddSingleton<DeliveryTrackingService>();
 builder.Services.AddSingleton<RabbitMqRepublisher>();
+builder.Services.AddSingleton<RabbitMqDeadLetterPublisher>();
 builder.Services.AddHostedService<NotificationWorker>();
 
 builder.Services.AddHealthChecks()

@@ -12,6 +12,10 @@ Primary integration endpoint for OpenMRS and other FHIR-aware clients.
 
 Authentication matches the legacy endpoint: `X-Api-Key` and organization via route, `X-Organization-Key`, or extension.
 
+## Character encoding
+
+Only **UTF-8** is supported. Use `Content-Type: application/fhir+json` or `application/fhir+json; charset=utf-8`. Other charsets (e.g. `iso-8859-1`) return HTTP `400` with an `OperationOutcome`. Invalid UTF-8 bytes in the body are rejected the same way. See [`docs/EXTENSIBILITY.md`](docs/EXTENSIBILITY.md) (section *Tekenset*).
+
 ## Required fields
 
 - `resourceType`: `Appointment`
@@ -61,7 +65,9 @@ curl -X POST "http://localhost:5001/fhir/Appointment/default" \
 
 ## ACK (success)
 
-HTTP `201 Created` (new) or `200 OK` (update) with a `Bundle` containing:
+Per [ADR 0010](docs/madr/0010-fhir-integratie.md): the appointment is stored synchronously in PostgreSQL, so the API returns **`201 Created`** (new) or **`200 OK`** (update)—not `202 Accepted`.
+
+Response body: a `Bundle` containing:
 
 1. The persisted `Appointment` resource
 2. An `OperationOutcome` with `severity=information` confirming receipt

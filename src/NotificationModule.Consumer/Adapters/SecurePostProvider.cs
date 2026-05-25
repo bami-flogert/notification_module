@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using NotificationModule.Consumer.Secrets;
+using NotificationModule.Shared;
 using NotificationModule.Shared.Models;
 using NotificationModule.Shared.Observability;
 
@@ -50,8 +51,7 @@ public class SecurePostProvider : INotificationProvider
         {
             format = "SMS",
             recipient = message.PatientPhone,
-            body = $"Appointment reminder for {message.PatientName}: " +
-                   $"{message.StartDateTime:dd MMM yyyy HH:mm} UTC — {message.Status}",
+            body = NotificationMessageBuilder.Build(message),
             subject = $"Appointment reminder — {message.StartDateTime:dd MMM yyyy}",
         };
 
@@ -66,6 +66,7 @@ public class SecurePostProvider : INotificationProvider
                 return request;
             },
             ct);
+        ProviderLogging.LogHttpResult(_logger, ChannelName, message, (int)response.StatusCode);
         response.EnsureSuccessStatusCode();
     }
 

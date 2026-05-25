@@ -39,6 +39,13 @@ public static class NotificationTelemetry
         "notification_messages_failed_total",
         unit: "messages");
 
+    /// <summary>
+    /// Allowed <c>reason</c> tag values: <c>deserialize</c>, <c>max_retries</c>, <c>exception</c>.
+    /// </summary>
+    public static readonly Counter<long> NotificationMessagesDlq = Meter.CreateCounter<long>(
+        "notification_messages_dlq_total",
+        unit: "messages");
+
     public static readonly Counter<long> RabbitMqMessagesPublished = Meter.CreateCounter<long>(
         "rabbitmq_messages_published_total",
         unit: "messages");

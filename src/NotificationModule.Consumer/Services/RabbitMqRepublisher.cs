@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using NotificationModule.Shared.Messaging;
 using NotificationModule.Shared.Models;
 using RabbitMQ.Client;
 
@@ -7,7 +8,6 @@ namespace NotificationModule.Consumer.Services;
 
 public sealed class RabbitMqRepublisher : IDisposable
 {
-    private const string ExchangeName = "appointment.notifications";
     private readonly ConnectionFactory _factory;
     private readonly ILogger<RabbitMqRepublisher> _logger;
 
@@ -54,7 +54,7 @@ public sealed class RabbitMqRepublisher : IDisposable
             props.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
             _channel.BasicPublish(
-                exchange: ExchangeName,
+                exchange: RabbitMqTopology.ExchangeName,
                 routingKey: targetProvider.Trim(),
                 basicProperties: props,
                 body: body);
@@ -72,7 +72,7 @@ public sealed class RabbitMqRepublisher : IDisposable
         _connection = _factory.CreateConnection();
         _channel = _connection.CreateModel();
 
-        _channel.ExchangeDeclare(ExchangeName, ExchangeType.Direct, durable: true);
+        _channel.ExchangeDeclare(RabbitMqTopology.ExchangeName, ExchangeType.Direct, durable: true);
         _logger.LogInformation("RabbitMqRepublisher connected to {Host}:{Port}", _factory.HostName, _factory.Port);
     }
 
