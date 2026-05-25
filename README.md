@@ -86,6 +86,7 @@ Het platte JSON-endpoint `POST /api/appointments` blijft beschikbaar maar is ver
 | Billingrapport (`GET /api/reports/deliveries`) | [`DASHBOARD_DATABASE.md`](DASHBOARD_DATABASE.md) (Billing deliveries report API) |
 | Uitbreiden (provider, nieuw meldingtype, tekenset) | [`docs/EXTENSIBILITY.md`](docs/EXTENSIBILITY.md) |
 | Betrouwbaarheid (DLQ, retries) | [`docs/RELIABILITY.md`](docs/RELIABILITY.md) |
+| Productie-deployment en TLS 1.3 | [`docs/PRODUCTION_SECURITY.md`](docs/PRODUCTION_SECURITY.md) |
 | Architectuurbeslissingen | [`docs/madr/README.md`](docs/madr/README.md) |
 
 ## Geheimen (PostgreSQL)
