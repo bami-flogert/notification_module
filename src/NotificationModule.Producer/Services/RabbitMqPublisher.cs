@@ -13,7 +13,7 @@ using RabbitMQ.Client;
 
 namespace NotificationModule.Producer.Services;
 
-public class RabbitMqPublisher : IDisposable
+public class RabbitMqPublisher : INotificationMessagePublisher, IDisposable
 {
     private static readonly TextMapPropagator Propagator = Propagators.DefaultTextMapPropagator;
 

@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using NotificationModule.Shared.Observability;
-using NotificationModule.Shared.Models;
 using NotificationModule.Shared.Persistence;
 using System.Diagnostics;
 
@@ -11,18 +10,21 @@ public sealed class NotificationSchedulerWorker : BackgroundService
     private static readonly TimeSpan StalePublishingThreshold = TimeSpan.FromMinutes(5);
 
     private readonly IDbContextFactory<NotificationDbContext> _dbFactory;
-    private readonly RabbitMqPublisher _publisher;
+    private readonly INotificationMessagePublisher _publisher;
+    private readonly OrganizationProviderPolicyService _policyService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<NotificationSchedulerWorker> _logger;
 
     public NotificationSchedulerWorker(
         IDbContextFactory<NotificationDbContext> dbFactory,
-        RabbitMqPublisher publisher,
+        INotificationMessagePublisher publisher,
+        OrganizationProviderPolicyService policyService,
         IConfiguration configuration,
         ILogger<NotificationSchedulerWorker> logger)
     {
         _dbFactory = dbFactory;
         _publisher = publisher;
+        _policyService = policyService;
         _configuration = configuration;
         _logger = logger;
     }
@@ -71,7 +73,6 @@ public sealed class NotificationSchedulerWorker : BackgroundService
         await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
         await RequeueStalePublishingNotificationsAsync(db, now, cancellationToken);
 
-        // Update pending queue metrics: count and oldest pending age (seconds)
         var pendingStats = await db.ScheduledNotifications
             .Where(x => x.Status == ScheduledNotificationStatuses.Pending && x.ScheduledSendAt <= now)
             .GroupBy(x => 1)
@@ -101,50 +102,14 @@ public sealed class NotificationSchedulerWorker : BackgroundService
             .OrderBy(x => x.ScheduledSendAt)
             .ToListAsync(cancellationToken);
 
-        var publishedCount = 0;
-        foreach (var scheduledNotification in dueNotifications)
-        {
-            var appointment = scheduledNotification.Appointment;
-            var organization = scheduledNotification.Organization;
-            var message = new AppointmentMessage
-            {
-                AppointmentUuid = appointment.AppointmentUuid,
-                PatientUuid = appointment.PatientUuid,
-                PatientName = appointment.PatientName ?? string.Empty,
-                PatientPhone = appointment.PatientPhone ?? string.Empty,
-                PatientEmail = appointment.PatientEmail ?? string.Empty,
-                StartDateTime = appointment.StartDateTime.UtcDateTime,
-                Status = appointment.Status,
-                OrganizationKey = organization.Key,
-                TimeZone = organization.TimeZone,
-                Location = appointment.Location ?? string.Empty,
-                Instructions = appointment.Instructions ?? string.Empty,
-                ScheduledNotificationId = scheduledNotification.Id,
-                ReminderType = scheduledNotification.ReminderType,
-                TargetProvider = organization.PreferredProvider,
-                TriedProviders = string.Empty,
-            };
-
-            try
-            {
-                _publisher.Publish(message);
-                scheduledNotification.Status = ScheduledNotificationStatuses.Queued;
-                scheduledNotification.UpdatedAt = now;
-                publishedCount++;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(
-                    ex,
-                    "Failed to publish scheduled notification {ScheduledNotificationId}; reverting to Pending.",
-                    scheduledNotification.Id);
-
-                scheduledNotification.Status = ScheduledNotificationStatuses.Pending;
-                scheduledNotification.UpdatedAt = now;
-            }
-        }
-
-        await db.SaveChangesAsync(cancellationToken);
+        var publishedCount = await NotificationSchedulerPublish.ProcessClaimedBatchAsync(
+            db,
+            dueNotifications,
+            _publisher,
+            _policyService,
+            _logger,
+            now,
+            cancellationToken);
 
         activity?.SetTag("scheduler.claimed_count", claimedIds.Count);
         activity?.SetTag("scheduler.published_count", publishedCount);

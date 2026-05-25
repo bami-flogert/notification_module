@@ -18,10 +18,12 @@ builder.Services.AddControllers();
 builder.Services.AddDbContextFactory<NotificationDbContext>(options =>
     options.UseNpgsql(connectionString));
 builder.Services.AddSingleton<RabbitMqPublisher>();
+builder.Services.AddSingleton<INotificationMessagePublisher>(sp => sp.GetRequiredService<RabbitMqPublisher>());
 builder.Services.AddScoped<AppointmentIngestionService>();
 builder.Services.AddSingleton<FhirAppointmentMapper>();
 builder.Services.AddSingleton<FhirAppointmentValidator>();
 builder.Services.AddSingleton<OrganizationApiKeyService>();
+builder.Services.AddSingleton<OrganizationProviderPolicyService>();
 builder.Services.AddScoped<AppointmentApiKeyAuthFilter>();
 builder.Services.AddHostedService<NotificationSchedulerWorker>();
 builder.Services.AddHostedService<DataRetentionWorker>();
