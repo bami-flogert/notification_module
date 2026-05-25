@@ -23,9 +23,9 @@ Use this file to create issues in GitHub (`gh issue create` or the web UI). Each
 | 8   | P1       | Organization provider policy API and publish readiness check          | 5   | —          | **Done**      |
 | 9   | P1       | Billing deliveries report API (admin, API key)                        | 5   | 4          | **Done**      |
 | 10  | P1       | Production TLS 1.3 deployment and security hardening guide            | 5   | 6          | Open          |
-| 11  | P2       | C4 Level 3 component diagram                                          | 3   | —          | Open          |
-| 12  | P2       | End-to-end process flow diagram                                       | 3   | 11         | Open          |
-| 13  | P2       | Reliability and retry documentation                                   | 2   | 7          | Open          |
+| 11  | P2       | C4 Level 3 component diagram                                          | 3   | —          | **Done**      |
+| 12  | P2       | End-to-end process flow diagram                                       | 3   | 11         | **Done**      |
+| 13  | P2       | Reliability and retry documentation                                   | 2   | 7          | **Done**      |
 | 14  | P2       | Fix broken links in `docs/madr/README.md`                             | 1   | —          | **Done**      |
 | 15  | P2       | Align ADR 0008 HTTP intake status with implementation                 | 2   | —          | **Done**      |
 | 16  | P2       | Extensibility guide for non-appointment notification types            | 3   | —          | **Done**      |
@@ -242,6 +242,8 @@ Billing metadata must be kept up to 1 year without directly identifiable patient
 
 ### Issue #11 — P2: C4 Level 3 component diagram
 
+**Status:** ✅ **Resolved** (2026-05-25)
+
 **Labels:** `P2-medium`, `documentation`, `architecture`
 
 **Acceptance criteria:**
@@ -251,9 +253,13 @@ Billing metadata must be kept up to 1 year without directly identifiable patient
 - Components inside Consumer: `NotificationWorker`, `NotificationDispatcher`, four adapters, `DeliveryTrackingService`, `ProviderSecretsStore`.
 - `docs/c4/expl.md` updated with C3 section and image embed.
 
+**Delivered in:** [`docs/c4/c3_components.svg`](c4/c3_components.svg), C3-sectie in [`docs/c4/expl.md`](c4/expl.md) met componenttabel.
+
 ---
 
 ### Issue #12 — P2: End-to-end process flow diagram
+
+**Status:** ✅ **Resolved** (2026-05-25)
 
 **Labels:** `P2-medium`, `documentation`, `architecture`
 
@@ -266,9 +272,13 @@ Billing metadata must be kept up to 1 year without directly identifiable patient
 - Cancel/update path shown as alternate flow.
 - Linked from `docs/c4/expl.md` and `README.md`.
 
+**Delivered in:** [`docs/c4/process_flow.svg`](c4/process_flow.svg), process flow-sectie in [`docs/c4/expl.md`](c4/expl.md), link in [`README.md`](../README.md).
+
 ---
 
 ### Issue #13 — P2: Reliability and retry documentation
+
+**Status:** ✅ **Resolved** (2026-05-25)
 
 **Labels:** `P2-medium`, `documentation`
 
@@ -278,6 +288,8 @@ Billing metadata must be kept up to 1 year without directly identifiable patient
 
 - New `docs/RELIABILITY.md` documents: scheduler retry, provider HTTP retry (3x), provider fallback republish, DLQ behavior, stale `Publishing` requeue, OpenMRS client retry guidance.
 - Matches actual code paths (file references per mechanism).
+
+**Delivered in:** [`docs/RELIABILITY.md`](RELIABILITY.md) — layered overview + mermaid flow; sections for scheduler retry, stale `Publishing` requeue (5 min), provider HTTP 3× (all four adapters), fallback republish, refined DLQ (vs fallback/dispatch paths), OpenMRS client retry table, status lifecycle, implementation file table; cross-links to `APPOINTMENT_ENDPOINT.md`, `FHIR_ENDPOINT.md`, ADR 0009.
 
 ---
 
@@ -439,7 +451,7 @@ Billing metadata must be kept up to 1 year without directly identifiable patient
 | **Core product**        | Dev A              | ~~#1~~ ✅ → ~~#2~~ ✅ → ~~#8~~ ✅               |
 | **Security & data**     | Dev B              | ~~#5~~ ✅ → ~~#3~~ ✅ → ~~#4~~ ✅ → ~~#18~~ ✅   |
 | **Reliability & API**   | Dev C              | ~~#7~~ ✅ → ~~#9~~ ✅ → #10                    |
-| **Docs & architecture** | Dev D              | #6 → #11 → #12 → #13 → #14 → #15 → #16 → #17 |
+| **Docs & architecture** | Dev D              | #6 → ~~#11~~ ✅ → ~~#12~~ ✅ → ~~#13~~ ✅ → ~~#14~~ ✅ → ~~#15~~ ✅ → ~~#16~~ ✅ → ~~#17~~ ✅ |
 | **QA & deliverables**   | Dev A + D (week 2) | #19 → #20 → #21 → #22                        |
 
 

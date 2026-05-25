@@ -1,0 +1,112 @@
+<svg width="100%" viewBox="0 0 720 820" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>End-to-end process flow</title>
+  <desc>Appointment notification happy path and cancel/update alternate flows</desc>
+  <defs>
+    <marker id="pa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <polygon points="0,1 9,5 0,9" fill="#000"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="720" height="820" fill="#fff"/>
+
+  <text x="18" y="26" font-family="Comic Sans MS, Chalkboard SE, cursive" font-size="13" font-weight="700">Process flow - afspraaknotificatie</text>
+
+  <!-- Happy path - center column -->
+  <rect x="220" y="42" width="280" height="44" fill="#ffff00" stroke="#000" stroke-width="2"/>
+  <text x="230" y="62" font-family="Comic Sans MS, cursive" font-size="12" font-weight="700">1. OpenMRS</text>
+  <text x="230" y="78" font-family="Comic Sans MS, cursive" font-size="10">POST FHIR Appointment</text>
+
+  <line x1="360" y1="86" x2="360" y2="98" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+
+  <rect x="220" y="100" width="280" height="44" fill="#00ffff" stroke="#000" stroke-width="2"/>
+  <text x="230" y="120" font-family="Comic Sans MS, cursive" font-size="12" font-weight="700">2. FhirAppointmentController</text>
+  <text x="230" y="136" font-family="Comic Sans MS, cursive" font-size="10">validate + map FHIR -&gt; AppointmentMessage</text>
+
+  <line x1="360" y1="144" x2="360" y2="156" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+
+  <rect x="220" y="158" width="280" height="52" fill="#00ffff" stroke="#000" stroke-width="2"/>
+  <text x="230" y="178" font-family="Comic Sans MS, cursive" font-size="12" font-weight="700">3. AppointmentIngestionService</text>
+  <text x="230" y="194" font-family="Comic Sans MS, cursive" font-size="10">upsert appointments</text>
+  <text x="230" y="206" font-family="Comic Sans MS, cursive" font-size="10">create scheduled_notifications (Pending)</text>
+
+  <!-- Alternate branch from step 3 -->
+  <line x1="500" y1="184" x2="540" y2="184" stroke="#000" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#pa)"/>
+  <text x="505" y="176" font-family="Comic Sans MS, cursive" font-size="10">alt</text>
+
+  <rect x="542" y="130" width="160" height="108" fill="#fffacd" stroke="#000" stroke-width="2" stroke-dasharray="5 3"/>
+  <text x="552" y="150" font-family="Comic Sans MS, cursive" font-size="11" font-weight="700">Alternatief</text>
+  <text x="552" y="168" font-family="Comic Sans MS, cursive" font-size="10">Cancel: Pending -&gt;</text>
+  <text x="552" y="182" font-family="Comic Sans MS, cursive" font-size="10">Cancelled (geen nieuwe</text>
+  <text x="552" y="196" font-family="Comic Sans MS, cursive" font-size="10">reminders)</text>
+  <text x="552" y="216" font-family="Comic Sans MS, cursive" font-size="10">Update: cancel old Pending,</text>
+  <text x="552" y="230" font-family="Comic Sans MS, cursive" font-size="10">rebuild nieuwe reminders</text>
+
+  <line x1="360" y1="210" x2="360" y2="222" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+
+  <rect x="220" y="224" width="280" height="44" fill="#d0d0d0" stroke="#000" stroke-width="2"/>
+  <text x="230" y="244" font-family="Comic Sans MS, cursive" font-size="12" font-weight="700">4. PostgreSQL</text>
+  <text x="230" y="260" font-family="Comic Sans MS, cursive" font-size="10">appointments + scheduled_notifications</text>
+
+  <line x1="360" y1="268" x2="360" y2="280" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+
+  <rect x="220" y="282" width="280" height="52" fill="#00ffff" stroke="#000" stroke-width="2"/>
+  <text x="230" y="302" font-family="Comic Sans MS, cursive" font-size="12" font-weight="700">5. NotificationSchedulerWorker</text>
+  <text x="230" y="318" font-family="Comic Sans MS, cursive" font-size="10">claim due: Pending -&gt; Publishing</text>
+  <text x="230" y="330" font-family="Comic Sans MS, cursive" font-size="10">-&gt; Queued na publish</text>
+
+  <line x1="360" y1="334" x2="360" y2="346" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+
+  <rect x="220" y="348" width="280" height="44" fill="#cc99ff" stroke="#000" stroke-width="2"/>
+  <text x="230" y="368" font-family="Comic Sans MS, cursive" font-size="12" font-weight="700">6. RabbitMqPublisher -&gt; RabbitMQ</text>
+  <text x="230" y="384" font-family="Comic Sans MS, cursive" font-size="10">publish AppointmentMessage</text>
+
+  <line x1="360" y1="392" x2="360" y2="404" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+
+  <rect x="220" y="406" width="280" height="44" fill="#00ffff" stroke="#000" stroke-width="2"/>
+  <text x="230" y="426" font-family="Comic Sans MS, cursive" font-size="12" font-weight="700">7. NotificationWorker</text>
+  <text x="230" y="442" font-family="Comic Sans MS, cursive" font-size="10">consume from provider queue</text>
+
+  <line x1="360" y1="450" x2="360" y2="462" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+
+  <rect x="220" y="464" width="280" height="52" fill="#00ffff" stroke="#000" stroke-width="2"/>
+  <text x="230" y="484" font-family="Comic Sans MS, cursive" font-size="12" font-weight="700">8. NotificationDispatcher</text>
+  <text x="230" y="500" font-family="Comic Sans MS, cursive" font-size="10">+ provider adapter (HTTP 3x)</text>
+  <text x="230" y="512" font-family="Comic Sans MS, cursive" font-size="10">-&gt; messaging provider</text>
+
+  <!-- Fallback loop -->
+  <path d="M 220 490 C 120 490, 120 368, 220 368" fill="none" stroke="#000" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#pa)"/>
+  <text x="88" y="430" font-family="Comic Sans MS, cursive" font-size="9">fallback republish</text>
+  <text x="88" y="442" font-family="Comic Sans MS, cursive" font-size="9">(volgende provider)</text>
+
+  <line x1="360" y1="516" x2="360" y2="528" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+
+  <rect x="220" y="530" width="280" height="52" fill="#00ffff" stroke="#000" stroke-width="2"/>
+  <text x="230" y="550" font-family="Comic Sans MS, cursive" font-size="12" font-weight="700">9. DeliveryTrackingService</text>
+  <text x="230" y="566" font-family="Comic Sans MS, cursive" font-size="10">notification_deliveries</text>
+  <text x="230" y="578" font-family="Comic Sans MS, cursive" font-size="10">+ billing_delivery_events</text>
+
+  <line x1="360" y1="582" x2="360" y2="594" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+
+  <rect x="220" y="596" width="280" height="44" fill="#d0d0d0" stroke="#000" stroke-width="2"/>
+  <text x="230" y="616" font-family="Comic Sans MS, cursive" font-size="12" font-weight="700">PostgreSQL (delivery logs)</text>
+  <text x="230" y="632" font-family="Comic Sans MS, cursive" font-size="10">scheduled_notification -&gt; Sent / Failed</text>
+
+  <!-- External provider -->
+  <rect x="520" y="464" width="120" height="52" fill="#ff8000" stroke="#000" stroke-width="2"/>
+  <text x="530" y="484" font-family="Comic Sans MS, cursive" font-size="11" font-weight="700">Messaging</text>
+  <text x="530" y="500" font-family="Comic Sans MS, cursive" font-size="11" font-weight="700">provider</text>
+  <line x1="500" y1="490" x2="518" y2="490" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+  <text x="505" y="482" font-family="Comic Sans MS, cursive" font-size="9">HTTP</text>
+
+  <!-- Legend -->
+  <rect x="12" y="660" width="12" height="12" fill="#ffff00" stroke="#000" stroke-width="1.5"/>
+  <text x="30" y="671" font-family="Comic Sans MS, cursive" font-size="11">= externe actor</text>
+  <rect x="140" y="660" width="12" height="12" fill="#00ffff" stroke="#000" stroke-width="1.5"/>
+  <text x="158" y="671" font-family="Comic Sans MS, cursive" font-size="11">= applicatie</text>
+  <rect x="260" y="660" width="12" height="12" fill="#cc99ff" stroke="#000" stroke-width="1.5"/>
+  <text x="278" y="671" font-family="Comic Sans MS, cursive" font-size="11">= RabbitMQ</text>
+  <rect x="380" y="660" width="12" height="12" fill="#d0d0d0" stroke="#000" stroke-width="1.5"/>
+  <text x="398" y="671" font-family="Comic Sans MS, cursive" font-size="11">= PostgreSQL</text>
+  <line x1="500" y1="666" x2="530" y2="666" stroke="#000" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text x="538" y="671" font-family="Comic Sans MS, cursive" font-size="11">= alternatief / fallback pad</text>
+</svg>
