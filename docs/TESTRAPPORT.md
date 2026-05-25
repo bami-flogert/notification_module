@@ -41,7 +41,7 @@ flowchart LR
 
 
 1. **Unit / integratie** — `dotnet test NotificationModule.sln` in `[tests/NotificationModule.Tests/](../tests/NotificationModule.Tests/)` (Producer, Consumer, Shared, security, observability).
-2. **Systeem** — `docker compose` + `[scripts/comprehensive-test.ps1](../scripts/comprehensive-test.ps1)` (Windows) of `[.sh](../scripts/comprehensive-test.sh)`. Volledige matrix: [TEST_CHECKLIST.md](../TEST_CHECKLIST.md).
+2. **Systeem** — `docker compose` + `[scripts/comprehensive-test.ps1](../scripts/comprehensive-test.ps1)` (Windows) of `[.sh](../scripts/comprehensive-test.sh)`. Volledige matrix: [TEST_CHECKLIST.md](TEST_CHECKLIST.md).
 3. **CI** — GitHub Actions: `dotnet test` + Docker build (`[.github/workflows/ci.yml](../.github/workflows/ci.yml)`).
 
 ---
@@ -71,7 +71,7 @@ Deze punten sluiten aan op de FMEA (Producer, RabbitMQ, Consumer, PostgreSQL). P
 
 ## Systeemtest-codes
 
-Het script labelt checks met korte ID’s (volledige lijst in [TEST_CHECKLIST.md](../TEST_CHECKLIST.md)):
+Het script labelt checks met korte ID’s (volledige lijst in [TEST_CHECKLIST.md](TEST_CHECKLIST.md)):
 
 
 | Prefix           | Betekenis                                                   | Voorbeelden                 |
@@ -108,7 +108,7 @@ dotnet test NotificationModule.sln
 
 Linux/macOS/Git Bash: `./scripts/comprehensive-test.sh` in plaats van het PowerShell-script.
 
-Volledige checklist inclusief handmatige stappen: [TEST_CHECKLIST.md](../TEST_CHECKLIST.md).
+Volledige checklist inclusief handmatige stappen: [TEST_CHECKLIST.md](TEST_CHECKLIST.md).
 
 ---
 

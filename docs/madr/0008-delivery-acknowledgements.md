@@ -4,7 +4,7 @@
 
 Superseded — vervangen door [0010-fhir-integratie.md](0010-fhir-integratie.md)
 
-> Dit document beschrijft de eerdere keuze (alleen REST, intake `202 Accepted`). De module gebruikt inmiddels **FHIR R4** voor intake met `**201 Created`** / `**200 OK**`. Zie ADR 0010 en `[FHIR_ENDPOINT.md](../../FHIR_ENDPOINT.md)`. Het besluit en en de gevolgen zijn historisch.
+> Dit document beschrijft de eerdere keuze (alleen REST, intake `202 Accepted`). De module gebruikt inmiddels **FHIR R4** voor intake met `**201 Created`** / `**200 OK**`. Zie ADR 0010 en `[FHIR_ENDPOINT.md](../FHIR_ENDPOINT.md)`. Het besluit en en de gevolgen zijn historisch.
 
 ## Context
 

@@ -1,5 +1,5 @@
 # Comprehensive test runner for notification_module (Windows PowerShell).
-# Implements the test matrix from TEST_CHECKLIST.md / project plan.
+# Implements the test matrix from docs/TEST_CHECKLIST.md / project plan.
 param(
     [string]$ProducerBase = "http://127.0.0.1:5001",
     [string]$ConsumerBase = "http://127.0.0.1:5002",

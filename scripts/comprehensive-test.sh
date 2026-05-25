@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Comprehensive test runner (Linux/macOS/Git Bash). See TEST_CHECKLIST.md.
+# Comprehensive test runner (Linux/macOS/Git Bash). See docs/TEST_CHECKLIST.md.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"

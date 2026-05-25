@@ -115,5 +115,5 @@ Implementatie: `FhirRequestEncoding` en `FhirAppointmentController` in de produc
 ## Gerelateerde documentatie
 
 - [RELIABILITY.md](RELIABILITY.md) — retries, DLQ
-- [FHIR_ENDPOINT.md](../FHIR_ENDPOINT.md) — afspraak-intake
+- [FHIR_ENDPOINT.md](FHIR_ENDPOINT.md) — afspraak-intake
 - [madr/0010-fhir-integratie.md](madr/0010-fhir-integratie.md) — waarom FHIR

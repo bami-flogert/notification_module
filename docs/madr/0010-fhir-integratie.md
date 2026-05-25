@@ -54,6 +54,6 @@ Dit besluit vervangt [ADR 0008](0008-delivery-acknowledgements.md) (status **Sup
 
 ## Zie ook
 
-- `[FHIR_ENDPOINT.md](../../FHIR_ENDPOINT.md)` — endpoints, voorbeelden, statuscodes
-- `[APPOINTMENT_ENDPOINT.md](../../APPOINTMENT_ENDPOINT.md)` — legacy JSON (`202 Accepted`)
+- `[FHIR_ENDPOINT.md](../FHIR_ENDPOINT.md)` — endpoints, voorbeelden, statuscodes
+- `[APPOINTMENT_ENDPOINT.md](../APPOINTMENT_ENDPOINT.md)` — legacy JSON (`202 Accepted`)
 

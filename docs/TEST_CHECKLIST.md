@@ -37,4 +37,4 @@ Manual follow-ups (not in automated script): H5 (stop Postgres/RabbitMQ), AUTH4 
 
 The script auto-repairs a stale RabbitMQ `appointment.notifications` exchange when it was created as `fanout` (deletes via management API and restarts producer/consumer).
 
-See project [README.md](README.md), [FHIR_ENDPOINT.md](FHIR_ENDPOINT.md), [DASHBOARD_DATABASE.md](DASHBOARD_DATABASE.md).
+See project [README.md](../README.md), [FHIR_ENDPOINT.md](FHIR_ENDPOINT.md), [DASHBOARD_DATABASE.md](DASHBOARD_DATABASE.md).

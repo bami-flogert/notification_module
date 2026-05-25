@@ -44,13 +44,13 @@ Provisioned dashboards:
 - `Notification Module - Prometheus Metrics`
 - `Notification Module - Jaeger Traces`
 
-Zie [`DASHBOARD_DATABASE.md`](DASHBOARD_DATABASE.md) voor DB data-flow en dashboard-SQL.
+Zie [`docs/DASHBOARD_DATABASE.md`](docs/DASHBOARD_DATABASE.md) voor DB data-flow en dashboard-SQL.
 
 Health endpoints: producer `http://localhost:5001/health` (liveness) en `/ready` (Postgres + RabbitMQ); consumer `http://localhost:5002/health` en `/ready`.
 
 ## Voorbeeldrequest (FHIR)
 
-De producer accepteert FHIR R4 `Appointment` resources op `POST /fhir/Appointment` (HL7 ACK via `OperationOutcome` in het antwoord). Zie [`FHIR_ENDPOINT.md`](FHIR_ENDPOINT.md).
+De producer accepteert FHIR R4 `Appointment` resources op `POST /fhir/Appointment` (HL7 ACK via `OperationOutcome` in het antwoord). Zie [`docs/FHIR_ENDPOINT.md`](docs/FHIR_ENDPOINT.md).
 
 ```bash
 curl -X POST http://localhost:5001/fhir/Appointment/default \
@@ -75,15 +75,15 @@ curl -X POST http://localhost:5001/fhir/Appointment/default \
   }'
 ```
 
-Het platte JSON-endpoint `POST /api/appointments` blijft beschikbaar maar is verouderd; zie [`APPOINTMENT_ENDPOINT.md`](APPOINTMENT_ENDPOINT.md).
+Het platte JSON-endpoint `POST /api/appointments` blijft beschikbaar maar is verouderd; zie [`docs/APPOINTMENT_ENDPOINT.md`](docs/APPOINTMENT_ENDPOINT.md).
 
 ## Documentatie
 
 | Onderwerp | Bestand |
 |-----------|---------|
-| FHIR-intake | [`FHIR_ENDPOINT.md`](FHIR_ENDPOINT.md) |
-| Providerbeleid per organisatie (`PUT /api/organizations/{key}/providers`) | [`DASHBOARD_DATABASE.md`](DASHBOARD_DATABASE.md) (organisatieconfig) · API-key via `X-Api-Key` |
-| Billingrapport (`GET /api/reports/deliveries`) | [`DASHBOARD_DATABASE.md`](DASHBOARD_DATABASE.md) (Billing deliveries report API) |
+| FHIR-intake | [`docs/FHIR_ENDPOINT.md`](docs/FHIR_ENDPOINT.md) |
+| Providerbeleid per organisatie (`PUT /api/organizations/{key}/providers`) | [`docs/DASHBOARD_DATABASE.md`](docs/DASHBOARD_DATABASE.md) (organisatieconfig) · API-key via `X-Api-Key` |
+| Billingrapport (`GET /api/reports/deliveries`) | [`docs/DASHBOARD_DATABASE.md`](docs/DASHBOARD_DATABASE.md) (Billing deliveries report API) |
 | Uitbreiden (provider, nieuw meldingtype, tekenset) | [`docs/EXTENSIBILITY.md`](docs/EXTENSIBILITY.md) |
 | Betrouwbaarheid (DLQ, retries) | [`docs/RELIABILITY.md`](docs/RELIABILITY.md) |
 | Testrapportage (betrouwbaarheid & uitbreidbaarheid) | [`docs/TESTRAPPORT.md`](docs/TESTRAPPORT.md) |
@@ -113,7 +113,7 @@ GitHub Actions runs the same tests and verifies that the producer and consumer D
 
 ### Comprehensive test checklist
 
-Full matrix (endpoints, DB, observability, pipeline): see [TEST_CHECKLIST.md](TEST_CHECKLIST.md).
+Full matrix (endpoints, DB, observability, pipeline): see [docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md).
 
 ```powershell
 docker compose --env-file env.example up --build -d
