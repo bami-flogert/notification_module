@@ -28,8 +28,8 @@ Voorbeeld: je wilt een provider **“SmsDirect”** naast SwiftSend, SecurePost,
 | 4 | `src/NotificationModule.Consumer/Workers/NotificationQueueMapping.cs` | Map wachtrijnaam → providernaam (bijv. `"smsdirect"` → `"SmsDirect"`). |
 | 5 | `src/NotificationModule.Consumer/Secrets/ProviderSecretsStore.cs` + `SecretsInitializer.cs` | Ondersteuning voor opslaan en laden van API-keys of wachtwoorden voor de nieuwe provider (volg het patroon van SwiftSend of LegacyLink). |
 | 6 | `env.example` | Documenteer nieuwe URL’s en seed-variabelen voor lokale tests. |
-| 7 | Database / `organizations` | Zorg dat `preferred_provider` of `fallback_providers` de nieuwe naam mag bevatten (issue #8 voegt daar straks validatie aan toe). |
-| 8 | `tests/NotificationModule.Tests/...` | Unit test voor queue-mapping; eventueel een test met een nep-provider (zie issue #22). |
+| 7 | `NotificationModule.Shared/Messaging/NotificationProviders.cs` | Voeg de naam toe aan `All` en `IsSupported`; daarna accepteert `PUT /api/organizations/{key}/providers` de nieuwe provider. |
+| 8 | `tests/NotificationModule.Tests/...` | Unit test voor queue-mapping; eventueel een test met een nep-`HttpClient` in de adapter (zie `SwiftSendProviderMessageIdTests`). |
 
 **Niet** nodig: wijzigingen in `NotificationDispatcher.cs` — die pikt alle geregistreerde providers automatisch op.
 

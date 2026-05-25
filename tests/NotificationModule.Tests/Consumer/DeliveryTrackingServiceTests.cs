@@ -112,6 +112,29 @@ public sealed class DeliveryTrackingServiceTests
     }
 
     [Fact]
+    public async Task RecordAsync_truncates_provider_message_id_to_128_characters()
+    {
+        var longId = new string('x', 200);
+        var (dbFactory, scheduledNotificationId) = await SeedScheduledNotificationAsync();
+        var service = CreateService(dbFactory);
+        var message = CreateMessage(scheduledNotificationId);
+
+        await service.RecordAsync(
+            message,
+            "SwiftSend",
+            success: true,
+            errorMessage: null,
+            CancellationToken.None,
+            providerMessageId: longId);
+
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var delivery = db.NotificationDeliveries.Single();
+
+        Assert.Equal(128, delivery.ProviderMessageId!.Length);
+        Assert.Equal(longId[..128], delivery.ProviderMessageId);
+    }
+
+    [Fact]
     public async Task RecordAsync_marks_scheduled_notification_failed_when_all_chain_providers_fail()
     {
         var (dbFactory, scheduledNotificationId) = await SeedScheduledNotificationAsync(

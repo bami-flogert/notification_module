@@ -82,6 +82,8 @@ Het platte JSON-endpoint `POST /api/appointments` blijft beschikbaar maar is ver
 | Onderwerp | Bestand |
 |-----------|---------|
 | FHIR-intake | [`FHIR_ENDPOINT.md`](FHIR_ENDPOINT.md) |
+| Providerbeleid per organisatie (`PUT /api/organizations/{key}/providers`) | [`DASHBOARD_DATABASE.md`](DASHBOARD_DATABASE.md) (organisatieconfig) · API-key via `X-Api-Key` |
+| Billingrapport (`GET /api/reports/deliveries`) | [`DASHBOARD_DATABASE.md`](DASHBOARD_DATABASE.md) (Billing deliveries report API) |
 | Uitbreiden (provider, nieuw meldingtype, tekenset) | [`docs/EXTENSIBILITY.md`](docs/EXTENSIBILITY.md) |
 | Betrouwbaarheid (DLQ, retries) | [`docs/RELIABILITY.md`](docs/RELIABILITY.md) |
 | Architectuurbeslissingen | [`docs/madr/README.md`](docs/madr/README.md) |

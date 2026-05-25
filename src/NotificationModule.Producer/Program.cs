@@ -9,6 +9,7 @@ using NotificationModule.Shared.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var isTesting = builder.Environment.IsEnvironment("Testing");
 var connectionString = builder.Configuration["NotificationDb:ConnectionString"]
     ?? throw new InvalidOperationException("NotificationDb:ConnectionString is required.");
 
@@ -16,7 +17,17 @@ builder.AddNotificationOpenTelemetry("notification-producer");
 
 builder.Services.AddControllers();
 builder.Services.AddDbContextFactory<NotificationDbContext>(options =>
-    options.UseNpgsql(connectionString));
+{
+    if (isTesting)
+    {
+        var testingDatabaseName = builder.Configuration["NotificationDb:TestingDatabaseName"] ?? "IntegrationTests";
+        options.UseInMemoryDatabase(testingDatabaseName);
+    }
+    else
+    {
+        options.UseNpgsql(connectionString);
+    }
+});
 builder.Services.AddSingleton<RabbitMqPublisher>();
 builder.Services.AddSingleton<INotificationMessagePublisher>(sp => sp.GetRequiredService<RabbitMqPublisher>());
 builder.Services.AddScoped<AppointmentIngestionService>();
@@ -26,12 +37,22 @@ builder.Services.AddSingleton<OrganizationApiKeyService>();
 builder.Services.AddSingleton<OrganizationProviderPolicyService>();
 builder.Services.AddSingleton<BillingDeliveriesReportService>();
 builder.Services.AddScoped<AppointmentApiKeyAuthFilter>();
-builder.Services.AddHostedService<NotificationSchedulerWorker>();
-builder.Services.AddHostedService<DataRetentionWorker>();
-builder.Services.AddHealthChecks()
-    .AddCheck("live", () => HealthCheckResult.Healthy(), tags: ["live"])
-    .AddNpgSql(connectionString, name: "notification-db", tags: ["ready"])
-    .AddCheck<RabbitMqHealthCheck>("rabbitmq", tags: ["ready"]);
+
+if (!isTesting)
+{
+    builder.Services.AddHostedService<NotificationSchedulerWorker>();
+    builder.Services.AddHostedService<DataRetentionWorker>();
+}
+
+var healthChecks = builder.Services.AddHealthChecks()
+    .AddCheck("live", () => HealthCheckResult.Healthy(), tags: ["live"]);
+
+if (!isTesting)
+{
+    healthChecks
+        .AddNpgSql(connectionString, name: "notification-db", tags: ["ready"])
+        .AddCheck<RabbitMqHealthCheck>("rabbitmq", tags: ["ready"]);
+}
 
 var app = builder.Build();
 
@@ -49,7 +70,10 @@ await using (var scope = app.Services.CreateAsyncScope())
 {
     var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<NotificationDbContext>>();
     await using var db = await dbFactory.CreateDbContextAsync();
-    await db.Database.MigrateAsync();
+    if (isTesting)
+        await db.Database.EnsureCreatedAsync();
+    else
+        await db.Database.MigrateAsync();
 
     var apiKeys = scope.ServiceProvider.GetRequiredService<OrganizationApiKeyService>();
     var defaultOrgKey = app.Configuration["Organizations:Default:Key"] ?? "default";
@@ -58,7 +82,12 @@ await using (var scope = app.Services.CreateAsyncScope())
         await apiKeys.EnsureSeededAsync(defaultOrgKey, seedKey, app.Lifetime.ApplicationStopping);
 }
 
-var publisher = app.Services.GetRequiredService<RabbitMqPublisher>();
-publisher.Initialize();
+if (!isTesting)
+{
+    var publisher = app.Services.GetRequiredService<RabbitMqPublisher>();
+    publisher.Initialize();
+}
 
 await app.RunAsync();
+
+public partial class Program;
