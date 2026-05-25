@@ -15,6 +15,7 @@ public sealed class NotificationDeliveryRecord
     public DateTimeOffset? SentAt { get; set; }
     public DateTimeOffset? FailedAt { get; set; }
     public string? ErrorMessage { get; set; }
+    public string? ProviderMessageId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }

@@ -29,7 +29,7 @@ Use this file to create issues in GitHub (`gh issue create` or the web UI). Each
 | 15 | P2 | Align ADR 0008 HTTP intake status with implementation | 2 | — | **Done** |
 | 16 | P2 | Extensibility guide for non-appointment notification types | 3 | — | **Done** |
 | 17 | P2 | Character set policy documentation (UTF-8) | 1 | — | **Done** |
-| 18 | P2 | Store external provider message/tracking IDs on delivery | 3 | 4 | Open |
+| 18 | P2 | Store external provider message/tracking IDs on delivery | 3 | 4 | **Done** |
 | 19 | P3 | Automated tests for gaps (message, TZ, retention, billing, DLQ) | 8 | 1–4, 7 | **Done** |
 | 20 | P3 | Formal test report (reliability & extensibility) | 3 | 19 | Open |
 | 21 | P3 | Project execution log (IDEs, AI, commits per member) | 2 | — | Open |
@@ -131,7 +131,7 @@ Billing metadata must be kept up to 1 year without directly identifiable patient
 - [x] Retention job (Issue #3) does **not** delete `billing_delivery_events` younger than 365 days.
 - [x] Job deletes (or archives) `billing_delivery_events` older than 365 days.
 
-**Schema note:** Implementation uses `OrganizationId` (join `organizations` for `Key`), single `OccurredAt` + `Status` instead of separate `SentAt`/`FailedAt`, and `CorrelationId` without `ProviderMessageId` (deferred to **#18**). Report API **#9** maps these fields.
+**Schema note:** Implementation uses `OrganizationId` (join `organizations` for `Key`), single `OccurredAt` + `Status` instead of separate `SentAt`/`FailedAt`, and `CorrelationId` (opaque GUID). `ProviderMessageId` added in **#18**. Report API **#9** maps these fields.
 
 **Delivered in:** `BillingDeliveryEventRecord`, migration `20260524120000_AddDataRetentionAndBillingLedger`, `DeliveryTrackingService`, `DASHBOARD_DATABASE.md`, `DeliveryTrackingServiceTests.RecordAsync_writes_billing_event_without_pii`.
 
@@ -340,15 +340,21 @@ Billing metadata must be kept up to 1 year without directly identifiable patient
 
 ### Issue #18 — P2: Store provider message/tracking IDs
 
+**Status:** ✅ **Resolved** (2026-05-25)
+
 **Labels:** `P2-medium`, `billing`, `consumer`
 
 **Depends on:** Issue #4
 
 **Acceptance criteria:**
 
-- [ ] `DeliveryTrackingService` extracts provider reference from response: SwiftSend/SecurePost/LegacyLink response body field (document which), AsyncFlow `trackingId`.
-- [ ] Persisted on `billing_delivery_events.ProviderMessageId` and `notification_deliveries` new nullable column `ProviderMessageId`.
-- [ ] Migration included; tests mock HTTP response and assert ID stored.
+- [x] Provider adapters extract external reference from HTTP response (via `ProviderResponseIds`): SwiftSend JSON `messageId`, SecurePost JSON `trackingId`, LegacyLink XML `MessageReference`, AsyncFlow JSON `trackingId`.
+- [x] Persisted on `billing_delivery_events.ProviderMessageId` and `notification_deliveries.ProviderMessageId` (nullable, max 128).
+- [x] Migration included; tests use FakeComWorld response fixtures and assert ID stored.
+
+**Delivered in:** `ProviderResponseIds`, four provider adapters (`SendAsync` returns `string?`), `NotificationDispatchResult.ProviderMessageId`, `DeliveryTrackingService.RecordAsync`, migration `20260525120000_AddProviderMessageId`, `ProviderResponseIdsTests`, `DeliveryTrackingServiceTests.RecordAsync_persists_provider_message_id_on_delivery_and_billing`.
+
+**Out of scope:** Billing report API field exposure (**#9**).
 
 ---
 
@@ -420,7 +426,7 @@ Billing metadata must be kept up to 1 year without directly identifiable patient
 | Stream | Owner | Issues |
 |--------|-------|--------|
 | **Core product** | Dev A | ~~#1~~ ✅ → ~~#2~~ ✅ → ~~#8~~ ✅ |
-| **Security & data** | Dev B | ~~#5~~ ✅ → ~~#3~~ ✅ → ~~#4~~ ✅ → #18 |
+| **Security & data** | Dev B | ~~#5~~ ✅ → ~~#3~~ ✅ → ~~#4~~ ✅ → ~~#18~~ ✅ |
 | **Reliability & API** | Dev C | ~~#7~~ ✅ → #9 (after #4) → #10 |
 | **Docs & architecture** | Dev D | #6 → #11 → #12 → #13 → #14 → #15 → #16 → #17 |
 | **QA & deliverables** | Dev A + D (week 2) | #19 → #20 → #21 → #22 |
@@ -434,7 +440,7 @@ Billing metadata must be kept up to 1 year without directly identifiable patient
 | **D3** | #2 TZ tests | #3 purge logic + tests | ~~#8 Provider policy API~~ ✅ done | #12 Process flow diagram |
 | **D4** | #2 merge; ~~#8 scheduler readiness~~ ✅ done | #4 Billing table + migration | ~~#8 API tests~~ ✅ done | #13 RELIABILITY.md; #14 ADR links |
 | **D5** | Buffer / PR review | #4 write path in consumer | #10 TLS security doc start | #15 ADR HTTP; #16 Extensibility |
-| **D6** | #19 tests (message + TZ) | #18 Provider message IDs | #9 Report API (blocked until #4 merged) | #17 Charset; #10 finish |
+| **D6** | #19 tests (message + TZ) | ~~#18 Provider message IDs~~ ✅ done | #9 Report API (blocked until #4 merged) | #17 Charset; #10 finish |
 | **D7** | #19 retention + billing tests | #3+#4 integration in staging | #9 merge + smoke | #20 TEST_REPORT draft |
 | **D8** | #22 fifth provider stub test | E2E smoke `scripts/smoke-test.sh` | Full stack test with DLQ | #21 PROJECT_LOG |
 | **D9** | Bug fixes from test report | Security review checklist | CI green + docker build | Doc review all `docs/*` |
@@ -480,7 +486,7 @@ Create issues manually from sections above, or split this file into `docs/github
 
 1. **P0 (must ship):** ~~#1~~ ✅, ~~#2~~ ✅, ~~#3~~ ✅, ~~#4~~ ✅, ~~#5~~ ✅, #6  
 2. **P1 (ship in same sprint):** ~~#7~~ ✅, ~~#8~~ ✅, #9, #10  
-3. **P2 (docs + hardening):** #11–#18  
+3. **P2 (docs + hardening):** #11–#17, ~~#18~~ ✅  
 4. **P3 (evidence of done):** #19–#22  
 
 Order in the backlog view: sort by issue number = priority order.

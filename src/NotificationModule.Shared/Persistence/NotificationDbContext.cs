@@ -119,6 +119,7 @@ public class NotificationDbContext : DbContext
             e.Property(x => x.Provider).HasMaxLength(64).IsRequired();
             e.Property(x => x.Status).HasMaxLength(32).IsRequired();
             e.Property(x => x.ErrorMessage).HasMaxLength(2000);
+            e.Property(x => x.ProviderMessageId).HasMaxLength(128);
             e.Property(x => x.CreatedAt).IsRequired();
             e.Property(x => x.UpdatedAt).IsRequired();
             e.HasIndex(x => new { x.OrganizationId, x.Status, x.UpdatedAt });
@@ -146,6 +147,7 @@ public class NotificationDbContext : DbContext
             e.Property(x => x.Status).HasMaxLength(32).IsRequired();
             e.Property(x => x.OccurredAt).IsRequired();
             e.Property(x => x.CorrelationId).IsRequired();
+            e.Property(x => x.ProviderMessageId).HasMaxLength(128);
             e.HasIndex(x => new { x.OrganizationId, x.OccurredAt });
             e.HasIndex(x => x.OccurredAt);
         });

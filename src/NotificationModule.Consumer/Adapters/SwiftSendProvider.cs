@@ -31,7 +31,7 @@ public class SwiftSendProvider : INotificationProvider
         _http.DefaultRequestHeaders.Add("X-STUDENT-GROUP", _studentGroup);
     }
 
-    public async Task SendAsync(AppointmentMessage message, CancellationToken ct)
+    public async Task<string?> SendAsync(AppointmentMessage message, CancellationToken ct)
     {
         var orgSecrets = await _secrets.GetForOrganizationAsync(message.OrganizationKey, ct);
 
@@ -47,6 +47,9 @@ public class SwiftSendProvider : INotificationProvider
         using var response = await PostJsonWithRetryAsync("/swiftsend", body, orgSecrets.SwiftSend.ApiKey, ct);
         ProviderLogging.LogHttpResult(_logger, ChannelName, message, (int)response.StatusCode);
         response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(ct);
+        return ProviderResponseIds.TryParseSwiftSendMessageId(json);
     }
 
     private async Task<HttpResponseMessage> PostJsonWithRetryAsync(

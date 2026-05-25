@@ -9,6 +9,10 @@ namespace NotificationModule.Consumer.Adapters;
 public interface INotificationProvider
 {
     string ChannelName { get; }   // "SMS", "WhatsApp", "Email"
-    Task SendAsync(AppointmentMessage message, CancellationToken ct);
+
+    /// <summary>
+    /// Sends the notification and returns the provider's external message/tracking ID when present.
+    /// </summary>
+    Task<string?> SendAsync(AppointmentMessage message, CancellationToken ct);
 }
 

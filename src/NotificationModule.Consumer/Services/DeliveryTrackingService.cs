@@ -27,7 +27,8 @@ public sealed class DeliveryTrackingService
         bool success,
         string? errorMessage,
         CancellationToken cancellationToken,
-        string? errorType = null)
+        string? errorType = null,
+        string? providerMessageId = null)
     {
         using var activity = NotificationTelemetry.ActivitySource.StartActivity(
             "consumer.delivery.record",
@@ -74,6 +75,7 @@ public sealed class DeliveryTrackingService
         delivery.SentAt = success ? now : null;
         delivery.FailedAt = success ? null : now;
         delivery.ErrorMessage = success ? null : Truncate(errorMessage, 2000);
+        delivery.ProviderMessageId = success ? Truncate(providerMessageId, 128) : null;
         delivery.UpdatedAt = now;
 
         db.BillingDeliveryEvents.Add(new BillingDeliveryEventRecord
@@ -85,6 +87,7 @@ public sealed class DeliveryTrackingService
             Status = success ? "Sent" : "Failed",
             OccurredAt = now,
             CorrelationId = Guid.NewGuid(),
+            ProviderMessageId = success ? Truncate(providerMessageId, 128) : null,
         });
 
         await db.SaveChangesAsync(cancellationToken);

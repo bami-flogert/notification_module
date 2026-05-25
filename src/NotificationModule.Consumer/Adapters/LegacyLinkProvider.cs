@@ -33,7 +33,7 @@ public class LegacyLinkProvider : INotificationProvider
         _http.DefaultRequestHeaders.Accept.ParseAdd("application/xml");
     }
 
-    public async Task SendAsync(AppointmentMessage message, CancellationToken ct)
+    public async Task<string?> SendAsync(AppointmentMessage message, CancellationToken ct)
     {
         var orgSecrets = await _secrets.GetForOrganizationAsync(message.OrganizationKey, ct);
         var xmlBody = BuildLegacyLinkSendSmsXml(message);
@@ -46,6 +46,9 @@ public class LegacyLinkProvider : INotificationProvider
             ct);
         ProviderLogging.LogHttpResult(_logger, ChannelName, message, (int)response.StatusCode);
         response.EnsureSuccessStatusCode();
+
+        var xml = await response.Content.ReadAsStringAsync(ct);
+        return ProviderResponseIds.TryParseLegacyLinkMessageReference(xml);
     }
 
     private static string BuildLegacyLinkSendSmsXml(AppointmentMessage m)

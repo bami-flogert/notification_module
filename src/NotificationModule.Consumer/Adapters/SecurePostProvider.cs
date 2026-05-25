@@ -42,7 +42,7 @@ public class SecurePostProvider : INotificationProvider
         _http.DefaultRequestHeaders.Add("X-STUDENT-GROUP", _studentGroup);
     }
 
-    public async Task SendAsync(AppointmentMessage message, CancellationToken ct)
+    public async Task<string?> SendAsync(AppointmentMessage message, CancellationToken ct)
     {
         var orgSecrets = await _secrets.GetForOrganizationAsync(message.OrganizationKey, ct);
         var token = await GetTokenAsync(message.OrganizationKey, orgSecrets.SecurePost, ct);
@@ -68,6 +68,9 @@ public class SecurePostProvider : INotificationProvider
             ct);
         ProviderLogging.LogHttpResult(_logger, ChannelName, message, (int)response.StatusCode);
         response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(ct);
+        return ProviderResponseIds.TryParseSecurePostTrackingId(json);
     }
 
     private async Task<string> GetTokenAsync(

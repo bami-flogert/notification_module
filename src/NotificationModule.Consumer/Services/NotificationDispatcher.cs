@@ -71,7 +71,7 @@ public class NotificationDispatcher
             _logger.LogInformation("Sending via {Channel} for {Uuid}",
                 provider.ChannelName, message.AppointmentUuid);
 
-            await provider.SendAsync(message, ct);
+            var providerMessageId = await provider.SendAsync(message, ct);
 
             _logger.LogInformation("{Channel} succeeded for {Uuid}",
                 provider.ChannelName, message.AppointmentUuid);
@@ -90,7 +90,7 @@ public class NotificationDispatcher
                 new KeyValuePair<string, object?>("provider", provider.ChannelName),
                 new KeyValuePair<string, object?>("status", "success"));
 
-            return NotificationDispatchResult.Succeeded(provider.ChannelName);
+            return NotificationDispatchResult.Succeeded(provider.ChannelName, providerMessageId);
         }
         catch (Exception ex)
         {
@@ -123,10 +123,11 @@ public sealed record NotificationDispatchResult(
     string Provider,
     bool Success,
     string? ErrorMessage,
-    string? ErrorType = null)
+    string? ErrorType = null,
+    string? ProviderMessageId = null)
 {
-    public static NotificationDispatchResult Succeeded(string provider) =>
-        new(provider, true, null);
+    public static NotificationDispatchResult Succeeded(string provider, string? providerMessageId = null) =>
+        new(provider, true, null, null, providerMessageId);
 
     public static NotificationDispatchResult Failed(
         string errorMessage,
