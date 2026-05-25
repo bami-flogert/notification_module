@@ -244,8 +244,13 @@ producer:
 ### Patientgegevens blijven langer dan 14 dagen bewaard
 
 * **Effect:** schending van de privacy-eis
-* **Oorzaak:** geen automatische opschoning geimplementeerd
-* **Maatregel:** nog te implementeren - scheduled job die rijen ouder dan 14 dagen verwijdert uit `appointments` en gerelateerde tabellen
+* **Oorzaak:** geen automatische opschoning
+* **Maatregel:** `DataRetentionWorker` roept periodiek `DataRetentionPurge` aan; PII-velden worden gewist na `DATA_RETENTION_RETENTION_DAYS` (default 14), billing-meta maximaal 365 dagen
+
+```csharp
+// DataRetentionWorker.cs — hosted service in Producer
+// DataRetentionPurge.cs — purge patient fields + oude billing events
+```
 
 ---
 
