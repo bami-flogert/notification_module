@@ -51,10 +51,10 @@ public sealed class AppointmentIngestionService
 
         var resolvedOrganizationKey = ResolveOrganizationKey(organizationKey, message);
         var now = DateTimeOffset.UtcNow;
-        var startDateTime = NormalizeToUtc(message.StartDateTime);
 
         await using var db = await _dbFactory.CreateDbContextAsync(cancellationToken);
         var organization = await EnsureOrganizationAsync(db, resolvedOrganizationKey, now, cancellationToken);
+        var startDateTime = NormalizeToUtc(message.StartDateTime, organization.TimeZone);
 
         var appointment = await db.Appointments
             .Include(x => x.ScheduledNotifications)
@@ -247,13 +247,27 @@ public sealed class AppointmentIngestionService
         || string.Equals(status, "Canceled", StringComparison.OrdinalIgnoreCase)
         || string.Equals(status, "cancelled", StringComparison.OrdinalIgnoreCase);
 
-    private static DateTimeOffset NormalizeToUtc(DateTime value)
+    private DateTimeOffset NormalizeToUtc(DateTime value, string? timeZone)
     {
-        var utc = value.Kind == DateTimeKind.Unspecified
-            ? DateTime.SpecifyKind(value, DateTimeKind.Utc)
-            : value.ToUniversalTime();
+        if (value.Kind != DateTimeKind.Unspecified)
+            return new DateTimeOffset(value.ToUniversalTime());
 
-        return new DateTimeOffset(utc);
+        if (!string.IsNullOrWhiteSpace(timeZone))
+        {
+            try
+            {
+                var tz = TimeZoneInfo.FindSystemTimeZoneById(timeZone);
+                return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(value, tz));
+            }
+            catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
+            {
+                _logger.LogWarning(
+                    "Timezone '{TimeZone}' is invalid or unknown; falling back to UTC for appointment start time.",
+                    timeZone);
+            }
+        }
+
+        return new DateTimeOffset(DateTime.SpecifyKind(value, DateTimeKind.Utc));
     }
 
     private static string? EmptyToNull(string? value) =>

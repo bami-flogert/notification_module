@@ -156,6 +156,81 @@ public sealed class AppointmentIngestionServiceTests
             sn => Assert.Equal(ScheduledNotificationStatuses.Cancelled, sn.Status));
     }
 
+    [Fact]
+    public async Task IngestAsync_normalizes_unspecified_start_time_using_org_timezone()
+    {
+        var dbFactory = TestDb.CreateNotificationFactory();
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = await dbFactory.CreateDbContextAsync())
+        {
+            db.Organizations.Add(new OrganizationRecord
+            {
+                Id = Guid.NewGuid(),
+                Key = "amsterdam-org",
+                Name = "Amsterdam Org",
+                TimeZone = "Europe/Amsterdam",
+                PreferredProvider = "SwiftSend",
+                IsEnabled = true,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AppointmentIngestionService(
+            dbFactory,
+            TestDb.CreateConfiguration(),
+            NullLogger<AppointmentIngestionService>.Instance);
+
+        // 14:30 local Amsterdam time (UTC+2 in summer) = 12:30 UTC
+        var localStart = new DateTime(2026, 6, 1, 14, 30, 0); // Kind = Unspecified
+        var message = CreateMessage(localStart) with { OrganizationKey = "amsterdam-org" };
+
+        var result = await service.IngestAsync(message, "amsterdam-org", CancellationToken.None);
+
+        var expected24hSendAt = new DateTimeOffset(2026, 5, 31, 12, 30, 0, TimeSpan.Zero);
+        var reminder24h = result.ScheduledReminders.Single(r => r.ReminderType == "24h");
+        Assert.Equal(expected24hSendAt, reminder24h.ScheduledSendAt);
+    }
+
+    [Fact]
+    public async Task IngestAsync_falls_back_to_utc_without_throwing_when_org_timezone_is_invalid()
+    {
+        var dbFactory = TestDb.CreateNotificationFactory();
+        var now = DateTimeOffset.UtcNow;
+
+        await using (var db = await dbFactory.CreateDbContextAsync())
+        {
+            db.Organizations.Add(new OrganizationRecord
+            {
+                Id = Guid.NewGuid(),
+                Key = "bad-tz-org",
+                Name = "Bad TZ Org",
+                TimeZone = "Not/A/Valid/Zone",
+                PreferredProvider = "SwiftSend",
+                IsEnabled = true,
+                CreatedAt = now,
+                UpdatedAt = now,
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var service = new AppointmentIngestionService(
+            dbFactory,
+            TestDb.CreateConfiguration(),
+            NullLogger<AppointmentIngestionService>.Instance);
+
+        // Unspecified kind — would normally be treated as org-local time, but timezone is invalid
+        var futureLocal = DateTime.SpecifyKind(DateTime.UtcNow.AddDays(2), DateTimeKind.Unspecified);
+        var message = CreateMessage(futureLocal) with { OrganizationKey = "bad-tz-org" };
+
+        var ex = await Record.ExceptionAsync(
+            () => service.IngestAsync(message, "bad-tz-org", CancellationToken.None));
+
+        Assert.Null(ex);
+    }
+
     private static (AppointmentIngestionService Service, IDbContextFactory<NotificationDbContext> Factory) CreateService()
     {
         var dbFactory = TestDb.CreateNotificationFactory();
