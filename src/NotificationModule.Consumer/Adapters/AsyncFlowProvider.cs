@@ -38,7 +38,7 @@ public class AsyncFlowProvider : INotificationProvider
         _http.DefaultRequestHeaders.Add("X-STUDENT-GROUP", _studentGroup);
     }
 
-    public async Task SendAsync(AppointmentMessage message, CancellationToken ct)
+    public async Task<string?> SendAsync(AppointmentMessage message, CancellationToken ct)
     {
         var orgSecrets = await _secrets.GetForOrganizationAsync(message.OrganizationKey, ct);
         var apiKey = orgSecrets.AsyncFlow.ApiKey;
@@ -55,11 +55,12 @@ public class AsyncFlowProvider : INotificationProvider
         submitResponse.EnsureSuccessStatusCode();
 
         var submitJson = await submitResponse.Content.ReadAsStringAsync(ct);
-        var trackingId = ExtractTrackingId(submitJson);
+        var trackingId = ProviderResponseIds.TryParseAsyncFlowTrackingId(submitJson);
         if (string.IsNullOrWhiteSpace(trackingId))
             throw new InvalidOperationException("AsyncFlow submit succeeded but no trackingId was returned.");
 
         await WaitForCompletionAsync(trackingId, apiKey, ct);
+        return trackingId;
     }
 
     private async Task WaitForCompletionAsync(string trackingId, string apiKey, CancellationToken ct)
@@ -86,12 +87,6 @@ public class AsyncFlowProvider : INotificationProvider
         }
 
         _logger.LogWarning("AsyncFlow did not complete within polling window for {TrackingId}", trackingId);
-    }
-
-    private static string? ExtractTrackingId(string json)
-    {
-        using var doc = JsonDocument.Parse(json);
-        return doc.RootElement.TryGetProperty("trackingId", out var el) ? el.GetString() : null;
     }
 
     private static string? ExtractStatus(string json)

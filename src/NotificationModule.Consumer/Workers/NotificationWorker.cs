@@ -219,7 +219,8 @@ public class NotificationWorker : BackgroundService
             result.Success,
             result.ErrorMessage,
             stoppingToken,
-            result.ErrorType);
+            result.ErrorType,
+            result.ProviderMessageId);
 
         if (!result.Success)
             await TryRepublishToFallbackAsync(normalized, providerName, stoppingToken);

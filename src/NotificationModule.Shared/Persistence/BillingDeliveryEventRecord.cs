@@ -11,4 +11,5 @@ public sealed class BillingDeliveryEventRecord
 
     // Opaque GUID — no foreign key to appointments or patients.
     public Guid CorrelationId { get; set; }
+    public string? ProviderMessageId { get; set; }
 }

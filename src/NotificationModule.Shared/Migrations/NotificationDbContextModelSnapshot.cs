@@ -126,6 +126,10 @@ partial class NotificationDbContextModelSnapshot : ModelSnapshot
             b.Property<Guid>("CorrelationId")
                 .HasColumnType("uuid");
 
+            b.Property<string>("ProviderMessageId")
+                .HasMaxLength(128)
+                .HasColumnType("character varying(128)");
+
             b.HasKey("Id");
 
             b.HasIndex("OccurredAt");
@@ -242,6 +246,10 @@ partial class NotificationDbContextModelSnapshot : ModelSnapshot
                 .IsRequired()
                 .HasMaxLength(64)
                 .HasColumnType("character varying(64)");
+
+            b.Property<string>("ProviderMessageId")
+                .HasMaxLength(128)
+                .HasColumnType("character varying(128)");
 
             b.Property<Guid>("ScheduledNotificationId")
                 .HasColumnType("uuid");

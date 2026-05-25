@@ -83,6 +83,55 @@ public sealed class DeliveryTrackingServiceTests
         Assert.DoesNotContain("PatientPhone", billingPropertyNames);
         Assert.DoesNotContain("PatientEmail", billingPropertyNames);
         Assert.DoesNotContain("AppointmentUuid", billingPropertyNames);
+        Assert.Contains("ProviderMessageId", billingPropertyNames);
+    }
+
+    [Fact]
+    public async Task RecordAsync_persists_provider_message_id_on_delivery_and_billing()
+    {
+        const string providerMessageId = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
+
+        var (dbFactory, scheduledNotificationId) = await SeedScheduledNotificationAsync();
+        var service = CreateService(dbFactory);
+        var message = CreateMessage(scheduledNotificationId);
+
+        await service.RecordAsync(
+            message,
+            "SwiftSend",
+            success: true,
+            errorMessage: null,
+            CancellationToken.None,
+            providerMessageId: providerMessageId);
+
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var delivery = db.NotificationDeliveries.Single();
+        var billing = db.BillingDeliveryEvents.Single();
+
+        Assert.Equal(providerMessageId, delivery.ProviderMessageId);
+        Assert.Equal(providerMessageId, billing.ProviderMessageId);
+    }
+
+    [Fact]
+    public async Task RecordAsync_truncates_provider_message_id_to_128_characters()
+    {
+        var longId = new string('x', 200);
+        var (dbFactory, scheduledNotificationId) = await SeedScheduledNotificationAsync();
+        var service = CreateService(dbFactory);
+        var message = CreateMessage(scheduledNotificationId);
+
+        await service.RecordAsync(
+            message,
+            "SwiftSend",
+            success: true,
+            errorMessage: null,
+            CancellationToken.None,
+            providerMessageId: longId);
+
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var delivery = db.NotificationDeliveries.Single();
+
+        Assert.Equal(128, delivery.ProviderMessageId!.Length);
+        Assert.Equal(longId[..128], delivery.ProviderMessageId);
     }
 
     [Fact]

@@ -19,7 +19,8 @@ public class SwiftSendProvider : INotificationProvider
     public SwiftSendProvider(
         ProviderSecretsStore secrets,
         IConfiguration config,
-        ILogger<SwiftSendProvider> logger)
+        ILogger<SwiftSendProvider> logger,
+        HttpClient? httpClient = null)
     {
         _secrets = secrets;
         _logger = logger;
@@ -27,11 +28,14 @@ public class SwiftSendProvider : INotificationProvider
             ?? throw new InvalidOperationException("Providers:SwiftSend:BaseUrl is required.");
 
         _studentGroup = config["Providers:StudentGroup"] ?? "unknown-group";
-        _http = new HttpClient { BaseAddress = new Uri(baseUrl) };
-        _http.DefaultRequestHeaders.Add("X-STUDENT-GROUP", _studentGroup);
+        _http = httpClient ?? new HttpClient { BaseAddress = new Uri(baseUrl) };
+        if (!_http.DefaultRequestHeaders.Contains("X-STUDENT-GROUP"))
+            _http.DefaultRequestHeaders.Add("X-STUDENT-GROUP", _studentGroup);
+        if (_http.BaseAddress is null)
+            _http.BaseAddress = new Uri(baseUrl);
     }
 
-    public async Task SendAsync(AppointmentMessage message, CancellationToken ct)
+    public async Task<string?> SendAsync(AppointmentMessage message, CancellationToken ct)
     {
         var orgSecrets = await _secrets.GetForOrganizationAsync(message.OrganizationKey, ct);
 
@@ -47,6 +51,9 @@ public class SwiftSendProvider : INotificationProvider
         using var response = await PostJsonWithRetryAsync("/swiftsend", body, orgSecrets.SwiftSend.ApiKey, ct);
         ProviderLogging.LogHttpResult(_logger, ChannelName, message, (int)response.StatusCode);
         response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync(ct);
+        return ProviderResponseIds.TryParseSwiftSendMessageId(json);
     }
 
     private async Task<HttpResponseMessage> PostJsonWithRetryAsync(

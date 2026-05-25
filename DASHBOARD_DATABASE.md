@@ -105,6 +105,7 @@ Important columns:
 - `Status`: `Sent` or `Failed`.
 - `OccurredAt`: when the attempt was recorded (maps to sent time when `Status` is `Sent`, failed time when `Failed`).
 - `CorrelationId`: opaque GUID for invoice disputes (not a patient or appointment identifier).
+- `ProviderMessageId`: external provider reference when delivery succeeded (nullable, max 128 characters).
 
 Rows older than **365 days** are deleted by `DataRetentionWorker` (`DataRetention:BillingRetentionDays` in producer config). Operational PII purge does not remove billing events younger than 365 days.
 
@@ -117,13 +118,52 @@ select
   b."ReminderType",
   b."Status",
   b."OccurredAt",
-  b."CorrelationId"
+  b."CorrelationId",
+  b."ProviderMessageId"
 from billing_delivery_events b
 join organizations o on o."Id" = b."OrganizationId"
 where o."Key" = 'default'
   and b."OccurredAt" >= now() - interval '30 days'
 order by b."OccurredAt" desc;
 ```
+
+### Billing deliveries report API
+
+Administrators can export PII-free billing rows over HTTP instead of querying SQL directly.
+
+**Endpoint:** `GET /api/reports/deliveries`
+
+**Query parameters:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `organizationKey` | Yes | Organization key (e.g. `default`) |
+| `from` | Yes | Start of range (ISO-8601, inclusive) |
+| `to` | Yes | End of range (ISO-8601, inclusive) |
+
+**Authentication:** Same as appointment intake — header `X-Api-Key` (required). Optional header `X-Organization-Key` when not passing `organizationKey` in the query (falls back to configured default org).
+
+**Example:**
+
+```bash
+curl "http://localhost:5001/api/reports/deliveries?organizationKey=default&from=2026-05-01T00:00:00Z&to=2026-05-31T23:59:59Z" \
+  -H "X-Api-Key: change-me-in-prod"
+```
+
+**Response:** JSON array of objects. Each object contains only these fields (no patient name, phone, email, or appointment UUID):
+
+| Field | Source |
+|-------|--------|
+| `organizationKey` | `organizations.Key` |
+| `provider` | `Provider` |
+| `reminderType` | `ReminderType` |
+| `status` | `Sent` or `Failed` |
+| `sentAt` | `OccurredAt` when `status` is `Sent`, otherwise `null` |
+| `failedAt` | `OccurredAt` when `status` is `Failed`, otherwise `null` |
+| `providerMessageId` | External provider reference (nullable) |
+| `correlationId` | Opaque GUID for invoice disputes |
+
+Data is read from `billing_delivery_events` only — not from `appointments` or `notification_deliveries`.
 
 ## Relationship Overview
 
