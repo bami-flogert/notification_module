@@ -1,0 +1,156 @@
+<svg width="100%" viewBox="0 0 1520 900" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>C3 Component diagram</title>
+  <desc>C4 Level 3 component diagram for Producer and Consumer</desc>
+  <defs>
+    <marker id="pa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <polygon points="0,1 9,5 0,9" fill="#000"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1520" height="900" fill="#fff"/>
+
+  <!-- Title -->
+  <text x="30" y="35" font-family="Comic Sans MS, Chalkboard SE, cursive" font-size="24" font-weight="700">C3 - Component diagram</text>
+  <text x="30" y="58" font-family="Comic Sans MS, Chalkboard SE, cursive" font-size="13">Producer &amp; Consumer - appointment notifications</text>
+
+  <!-- ========== PRODUCER SECTION ========== -->
+  <rect x="30" y="80" width="420" height="490" fill="none" stroke="#000" stroke-width="2" stroke-dasharray="7 4"/>
+  <text x="45" y="100" font-family="Comic Sans MS, cursive" font-size="11">&#171;container&#187; Producer (NotificationModule.Producer)</text>
+
+  <!-- OpenMRS -->
+  <rect x="50" y="120" width="380" height="70" fill="#ffff00" stroke="#000" stroke-width="2"/>
+  <text x="65" y="145" font-family="Comic Sans MS, cursive" font-size="13" font-weight="700">OpenMRS</text>
+  <text x="65" y="165" font-family="Comic Sans MS, cursive" font-size="11">organisatie (FHIR client)</text>
+
+  <!-- Producer components -->
+  <rect x="50" y="210" width="380" height="65" fill="#00ffff" stroke="#000" stroke-width="2"/>
+  <text x="65" y="235" font-family="Comic Sans MS, cursive" font-size="13" font-weight="700">FhirAppointmentController</text>
+  <text x="65" y="255" font-family="Comic Sans MS, cursive" font-size="11">FHIR POST /fhir/Appointment</text>
+
+  <rect x="50" y="295" width="380" height="65" fill="#00ffff" stroke="#000" stroke-width="2"/>
+  <text x="65" y="320" font-family="Comic Sans MS, cursive" font-size="13" font-weight="700">AppointmentIngestionService</text>
+  <text x="65" y="340" font-family="Comic Sans MS, cursive" font-size="11">upsert afspraken + plan reminders</text>
+
+  <rect x="50" y="380" width="380" height="65" fill="#00ffff" stroke="#000" stroke-width="2"/>
+  <text x="65" y="405" font-family="Comic Sans MS, cursive" font-size="13" font-weight="700">NotificationSchedulerWorker</text>
+  <text x="65" y="425" font-family="Comic Sans MS, cursive" font-size="11">poll due scheduled_notifications</text>
+
+  <rect x="50" y="465" width="380" height="65" fill="#00ffff" stroke="#000" stroke-width="2"/>
+  <text x="65" y="490" font-family="Comic Sans MS, cursive" font-size="13" font-weight="700">RabbitMqPublisher</text>
+  <text x="65" y="510" font-family="Comic Sans MS, cursive" font-size="11">publish AppointmentMessage</text>
+
+  <!-- ========== DATABASE ========== -->
+  <rect x="30" y="600" width="420" height="80" fill="#d0d0d0" stroke="#000" stroke-width="2"/>
+  <text x="45" y="630" font-family="Comic Sans MS, cursive" font-size="13" font-weight="700">PostgreSQL</text>
+  <text x="45" y="650" font-family="Comic Sans MS, cursive" font-size="11">appointments, scheduled_notifications,</text>
+  <text x="45" y="668" font-family="Comic Sans MS, cursive" font-size="11">notification_deliveries, billing_delivery_events</text>
+
+  <!-- ========== MESSAGE BROKER ========== -->
+  <rect x="520" y="280" width="320" height="100" fill="#cc99ff" stroke="#000" stroke-width="2"/>
+  <text x="535" y="315" font-family="Comic Sans MS, cursive" font-size="13" font-weight="700">RabbitMQ</text>
+  <text x="535" y="335" font-family="Comic Sans MS, cursive" font-size="11">provider queues + DLQ</text>
+  <text x="535" y="355" font-family="Comic Sans MS, cursive" font-size="11">AMQP message broker</text>
+
+  <!-- ========== CONSUMER SECTION ========== -->
+  <rect x="900" y="80" width="450" height="530" fill="none" stroke="#000" stroke-width="2" stroke-dasharray="7 4"/>
+  <text x="915" y="100" font-family="Comic Sans MS, cursive" font-size="11">&#171;container&#187; Consumer (NotificationModule.Consumer)</text>
+
+  <rect x="920" y="125" width="410" height="65" fill="#00ffff" stroke="#000" stroke-width="2"/>
+  <text x="935" y="150" font-family="Comic Sans MS, cursive" font-size="13" font-weight="700">NotificationWorker</text>
+  <text x="935" y="170" font-family="Comic Sans MS, cursive" font-size="11">consume RabbitMQ + orchestrate dispatch</text>
+
+  <rect x="920" y="210" width="410" height="65" fill="#00ffff" stroke="#000" stroke-width="2"/>
+  <text x="935" y="235" font-family="Comic Sans MS, cursive" font-size="13" font-weight="700">NotificationDispatcher</text>
+  <text x="935" y="255" font-family="Comic Sans MS, cursive" font-size="11">route naar provider adapter</text>
+
+  <text x="920" y="295" font-family="Comic Sans MS, cursive" font-size="11">&#171;component&#187; provider adapters</text>
+
+  <rect x="920" y="310" width="195" height="70" fill="#00ffff" stroke="#000" stroke-width="2"/>
+  <text x="935" y="335" font-family="Comic Sans MS, cursive" font-size="12" font-weight="700">SwiftSendProvider</text>
+  <text x="935" y="355" font-family="Comic Sans MS, cursive" font-size="11">JSON REST</text>
+
+  <rect x="1135" y="310" width="195" height="70" fill="#00ffff" stroke="#000" stroke-width="2"/>
+  <text x="1150" y="335" font-family="Comic Sans MS, cursive" font-size="12" font-weight="700">LegacyLinkProvider</text>
+  <text x="1150" y="355" font-family="Comic Sans MS, cursive" font-size="11">XML SOAP</text>
+
+  <rect x="920" y="400" width="195" height="70" fill="#00ffff" stroke="#000" stroke-width="2"/>
+  <text x="935" y="425" font-family="Comic Sans MS, cursive" font-size="12" font-weight="700">SecurePostProvider</text>
+  <text x="935" y="445" font-family="Comic Sans MS, cursive" font-size="11">OAuth + JSON</text>
+
+  <rect x="1135" y="400" width="195" height="70" fill="#00ffff" stroke="#000" stroke-width="2"/>
+  <text x="1150" y="425" font-family="Comic Sans MS, cursive" font-size="12" font-weight="700">AsyncFlowProvider</text>
+  <text x="1150" y="445" font-family="Comic Sans MS, cursive" font-size="11">async JSON</text>
+
+  <rect x="920" y="490" width="195" height="70" fill="#00ffff" stroke="#000" stroke-width="2"/>
+  <text x="935" y="515" font-family="Comic Sans MS, cursive" font-size="12" font-weight="700">ProviderSecretsStore</text>
+  <text x="935" y="535" font-family="Comic Sans MS, cursive" font-size="11">decrypt provider_secrets</text>
+
+  <rect x="1135" y="490" width="195" height="70" fill="#00ffff" stroke="#000" stroke-width="2"/>
+  <text x="1150" y="515" font-family="Comic Sans MS, cursive" font-size="12" font-weight="700">DeliveryTrackingService</text>
+  <text x="1150" y="535" font-family="Comic Sans MS, cursive" font-size="11">deliveries + billing events</text>
+
+  <!-- ========== MESSAGING PROVIDERS ========== -->
+  <text x="1380" y="280" font-family="Comic Sans MS, cursive" font-size="13" font-weight="700">Messaging</text>
+  <text x="1380" y="300" font-family="Comic Sans MS, cursive" font-size="13" font-weight="700">providers</text>
+  <rect x="1370" y="310" width="130" height="120" fill="#ff8000" stroke="#000" stroke-width="2"/>
+  <text x="1435" y="340" font-family="Comic Sans MS, cursive" font-size="11" text-anchor="middle">SwiftSend</text>
+  <text x="1435" y="360" font-family="Comic Sans MS, cursive" font-size="11" text-anchor="middle">LegacyLink</text>
+  <text x="1435" y="380" font-family="Comic Sans MS, cursive" font-size="11" text-anchor="middle">SecurePost</text>
+  <text x="1435" y="400" font-family="Comic Sans MS, cursive" font-size="11" text-anchor="middle">AsyncFlow</text>
+
+  <!-- ========== ARROWS ========== -->
+  <line x1="240" y1="190" x2="240" y2="210" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+  <text x="250" y="200" font-family="Comic Sans MS, cursive" font-size="11">HTTP FHIR</text>
+
+  <line x1="240" y1="275" x2="240" y2="295" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+  <line x1="240" y1="360" x2="240" y2="380" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+  <line x1="240" y1="445" x2="240" y2="465" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+
+  <line x1="240" y1="530" x2="240" y2="600" stroke="#000" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#pa)"/>
+  <text x="255" y="570" font-family="Comic Sans MS, cursive" font-size="11">SQL (afspraken)</text>
+
+  <line x1="430" y1="497" x2="520" y2="350" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+  <text x="440" y="415" font-family="Comic Sans MS, cursive" font-size="11">AMQP</text>
+
+  <line x1="840" y1="330" x2="920" y2="155" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+  <text x="860" y="235" font-family="Comic Sans MS, cursive" font-size="11">berichten</text>
+
+  <line x1="1125" y1="190" x2="1125" y2="210" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+
+  <line x1="1017" y1="275" x2="1017" y2="310" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+  <line x1="1243" y1="275" x2="1243" y2="310" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+
+  <line x1="1017" y1="380" x2="1017" y2="490" stroke="#000" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#pa)"/>
+  <line x1="1243" y1="470" x2="1243" y2="490" stroke="#000" stroke-width="2" stroke-dasharray="4 3" marker-end="url(#pa)"/>
+  <text x="1050" y="478" font-family="Comic Sans MS, cursive" font-size="10">decrypt secrets</text>
+
+  <line x1="1115" y1="345" x2="1370" y2="365" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+  <line x1="1330" y1="435" x2="1370" y2="405" stroke="#000" stroke-width="2" marker-end="url(#pa)"/>
+  <text x="1210" y="355" font-family="Comic Sans MS, cursive" font-size="11">HTTP</text>
+
+  <line x1="1240" y1="560" x2="450" y2="640" stroke="#000" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#pa)"/>
+  <text x="780" y="610" font-family="Comic Sans MS, cursive" font-size="11">SQL (deliveries)</text>
+
+  <!-- ========== LEGEND ========== -->
+  <text x="30" y="750" font-family="Comic Sans MS, cursive" font-size="16" font-weight="700">Legenda</text>
+
+  <rect x="30" y="765" width="12" height="12" fill="#ffff00" stroke="#000" stroke-width="1.5"/>
+  <text x="50" y="776" font-family="Comic Sans MS, cursive" font-size="11">= externe actor</text>
+
+  <rect x="200" y="765" width="12" height="12" fill="#00ffff" stroke="#000" stroke-width="1.5"/>
+  <text x="220" y="776" font-family="Comic Sans MS, cursive" font-size="11">= component</text>
+
+  <rect x="360" y="765" width="12" height="12" fill="#cc99ff" stroke="#000" stroke-width="1.5"/>
+  <text x="380" y="776" font-family="Comic Sans MS, cursive" font-size="11">= message broker</text>
+
+  <rect x="540" y="765" width="12" height="12" fill="#d0d0d0" stroke="#000" stroke-width="1.5"/>
+  <text x="560" y="776" font-family="Comic Sans MS, cursive" font-size="11">= database</text>
+
+  <rect x="680" y="765" width="12" height="12" fill="#ff8000" stroke="#000" stroke-width="1.5"/>
+  <text x="700" y="776" font-family="Comic Sans MS, cursive" font-size="11">= messaging provider</text>
+
+  <!-- Notes -->
+  <text x="30" y="820" font-family="Comic Sans MS, cursive" font-size="11" font-style="italic">- Stippellijn = database queries</text>
+  <text x="30" y="840" font-family="Comic Sans MS, cursive" font-size="11" font-style="italic">- Scheduler draait in hetzelfde Producer-proces als de REST API</text>
+  <text x="30" y="860" font-family="Comic Sans MS, cursive" font-size="11" font-style="italic">- Alle adapters gebruiken credentials uit ProviderSecretsStore</text>
+</svg>
