@@ -1,4 +1,4 @@
-#ADR: Observability Stack
+# ADR: Observability Stack
 ## Status
 Accepted
 ## Context
