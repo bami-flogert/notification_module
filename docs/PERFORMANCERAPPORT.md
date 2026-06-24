@@ -66,7 +66,7 @@ flowchart LR
 ### Scenario A — Baseline (happy path)
 
 1. Schone stack (`docker compose down -v` optioneel bij eerste run).
-2. Eén FHIR `Appointment` POST naar `/fhir/Appointment/default` (catch-up, `start = UTC now + 30 min`).
+2. Eén OpenMRS webhook POST naar `/api/webhooks/openmrs/appointments/default` (catch-up, `start = UTC now + 30 min`).
 3. Wacht **75 seconden** (~2 scheduler-cycli).
 4. Prometheus instant queries (5 min venster).
 

@@ -25,7 +25,7 @@ De producer en consumer exporteren traces, metrics en logs via OTLP.
 - Jaeger UI: [http://localhost:16686](http://localhost:16686)
 - Prometheus UI: [http://localhost:9090](http://localhost:9090)
 
-ADR's: [`docs/madr/README.md`](docs/madr/README.md) (overzicht) · FHIR-intake: [`docs/madr/0010-fhir-integratie.md`](docs/madr/0010-fhir-integratie.md) · Observability: [`docs/madr/0007-opentelemetry-logs-with-loki.md`](docs/madr/0007-opentelemetry-logs-with-loki.md)
+ADR's: [`docs/madr/README.md`](docs/madr/README.md) (overzicht) · OpenMRS-bridge: [`docs/madr/0011-openmrs-omod-bridge.md`](docs/madr/0011-openmrs-omod-bridge.md) · Observability: [`docs/madr/0007-opentelemetry-logs-with-loki.md`](docs/madr/0007-opentelemetry-logs-with-loki.md)
 
 Belangrijke metrics:
 
@@ -74,40 +74,11 @@ curl -X POST http://localhost:5001/api/webhooks/openmrs/appointments/default \
 
 Zie [`docs/openmrs/OMOD_BRIDGE.md`](docs/openmrs/OMOD_BRIDGE.md).
 
-## Voorbeeldrequest (FHIR)
-
-De producer accepteert FHIR R4 `Appointment` resources op `POST /fhir/Appointment` (HL7 ACK via `OperationOutcome` in het antwoord). Zie [`docs/FHIR_ENDPOINT.md`](docs/FHIR_ENDPOINT.md).
-
-```bash
-curl -X POST http://localhost:5001/fhir/Appointment/default \
-  -H "X-Api-Key: change-me-in-prod" \
-  -H "Content-Type: application/fhir+json" \
-  -H "Accept: application/fhir+json" \
-  -d '{
-    "resourceType": "Appointment",
-    "status": "booked",
-    "start": "2026-05-12T14:30:00Z",
-    "identifier": [{ "system": "http://openmrs.org/appointment", "value": "demo-1" }],
-    "participant": [{
-      "actor": { "reference": "Patient/patient-1", "display": "Peter Jansen" },
-      "status": "accepted"
-    }],
-    "patientInstruction": "Neem een geldig identiteitsbewijs mee.",
-    "extension": [
-      { "url": "http://notification-module.local/StructureDefinition/patient-phone", "valueString": "+31612345678" },
-      { "url": "http://notification-module.local/StructureDefinition/patient-email", "valueString": "peter@example.com" },
-      { "url": "http://notification-module.local/StructureDefinition/location-text", "valueString": "Polikliniek A" }
-    ]
-  }'
-```
-
-Het platte JSON-endpoint `POST /api/appointments` blijft beschikbaar maar is verouderd; zie [`docs/APPOINTMENT_ENDPOINT.md`](docs/APPOINTMENT_ENDPOINT.md).
-
 ## Documentatie
 
 | Onderwerp | Bestand |
 |-----------|---------|
-| FHIR-intake | [`docs/FHIR_ENDPOINT.md`](docs/FHIR_ENDPOINT.md) |
+| OpenMRS webhook-intake | [`docs/openmrs/OMOD_BRIDGE.md`](docs/openmrs/OMOD_BRIDGE.md) |
 | Providerbeleid per organisatie (`PUT /api/organizations/{key}/providers`) | [`docs/DASHBOARD_DATABASE.md`](docs/DASHBOARD_DATABASE.md) (organisatieconfig) · API-key via `X-Api-Key` |
 | Billingrapport (`GET /api/reports/deliveries`) | [`docs/DASHBOARD_DATABASE.md`](docs/DASHBOARD_DATABASE.md) (Billing deliveries report API) |
 | Uitbreiden (provider, nieuw meldingtype, tekenset) | [`docs/EXTENSIBILITY.md`](docs/EXTENSIBILITY.md) |
@@ -128,7 +99,7 @@ Het platte JSON-endpoint `POST /api/appointments` blijft beschikbaar maar is ver
 | --------------------------- | ------------------------------------------------------------------------ |
 | `SECRETS_MASTER_KEY_BASE64` | 32 bytes random key, Base64 → `Secrets__MasterKeyBase64` in de container |
 | `SECRETS_SEED_*`            | Eénmalige seed als `provider_secrets` nog leeg is (zie `env.example`)    |
-| `APIKEY_SEED_DEFAULT`       | Eénmalige seed voor `POST /api/appointments` auth (wordt gehashed opgeslagen) |
+| `APIKEY_SEED_DEFAULT`       | Eénmalige seed voor webhook-auth (wordt gehashed opgeslagen) |
 | `POSTGRES_PASSWORD`         | Wachtwoord voor gebruiker `notification` (DB + connection string)        |
 
 Gebruik in productie een sterke master key (`openssl rand -base64 32`) en roteer/reseed volgens jullie beveiligingsbeleid.

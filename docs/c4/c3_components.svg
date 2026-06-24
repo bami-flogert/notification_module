@@ -24,8 +24,8 @@
 
   <!-- Producer components -->
   <rect x="50" y="210" width="380" height="65" fill="#00ffff" stroke="#000" stroke-width="2"/>
-  <text x="65" y="235" font-family="Comic Sans MS, cursive" font-size="13" font-weight="700">FhirAppointmentController</text>
-  <text x="65" y="255" font-family="Comic Sans MS, cursive" font-size="11">FHIR POST /fhir/Appointment</text>
+  <text x="65" y="235" font-family="Comic Sans MS, cursive" font-size="13" font-weight="700">OpenMrsWebhookController</text>
+  <text x="65" y="255" font-family="Comic Sans MS, cursive" font-size="11">POST /api/webhooks/openmrs/appointments</text>
 
   <rect x="50" y="295" width="380" height="65" fill="#00ffff" stroke="#000" stroke-width="2"/>
   <text x="65" y="320" font-family="Comic Sans MS, cursive" font-size="13" font-weight="700">AppointmentIngestionService</text>

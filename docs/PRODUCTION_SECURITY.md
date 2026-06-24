@@ -50,14 +50,7 @@ server {
     # HSTS (verplicht HTTPS minimaal 1 jaar)
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
-    # Producer
-    location /fhir/ {
-        proxy_pass http://producer:5001;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
-    }
-
+    # Producer (webhooks + API)
     location /api/ {
         proxy_pass http://producer:5001;
         proxy_set_header Host $host;

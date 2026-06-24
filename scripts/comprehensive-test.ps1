@@ -205,7 +205,7 @@ foreach ($pair in @(
 
 # --- Health probes H1-H4 ---
 Write-Host "`n==> Application health (H1-H4)"
-Wait-HttpStatus -Url "$ProducerBase/fhir/metadata" -AcceptCodes @(200) | Out-Null
+Wait-HttpStatus -Url "$ProducerBase/health" -AcceptCodes @(200) | Out-Null
 foreach ($pair in @(
     @{ Id = "H1"; Url = "$ProducerBase/health" },
     @{ Id = "H2"; Url = "$ProducerBase/ready" },
@@ -217,16 +217,13 @@ foreach ($pair in @(
     Write-TestResult -Id $pair.Id -Ok ($null -ne $r -and $body -eq "Healthy") -Detail "$($pair.Url) => $body"
 }
 
-# --- E1 metadata ---
-Write-Host "`n==> Endpoints (E1-E17, AUTH)"
-$meta = Invoke-WebRequest -Uri "$ProducerBase/fhir/metadata" -Headers @{ Accept = "application/fhir+json" } -UseBasicParsing
-$metaBody = Get-ResponseText $meta
-$metaOk = ($meta.StatusCode -eq 200) -and ($metaBody -match "CapabilityStatement")
-Write-TestResult -Id "E1" -Ok $metaOk -Detail "GET /fhir/metadata => $($meta.StatusCode)"
+# --- Endpoints & auth ---
+Write-Host "`n==> Endpoints (E3, AUTH, E15-E17)"
+$webhookUrl = "$ProducerBase/api/webhooks/openmrs/appointments/default"
 
 # AUTH1 - no key
 try {
-    $bad = Invoke-JsonPost -Url "$ProducerBase/api/appointments/default" -Body '{"appointmentUuid":"auth1"}' -Headers @{}
+    $bad = Invoke-JsonPost -Url $webhookUrl -Body '{"event":"CREATED","appointmentUuid":"auth1"}' -Headers @{}
     Write-TestResult -Id "AUTH1" -Ok $false -Detail "expected 401 got $($bad.StatusCode)"
 } catch {
     $code = [int]$_.Exception.Response.StatusCode
@@ -235,7 +232,7 @@ try {
 
 # AUTH2 - wrong key
 try {
-    $bad = Invoke-JsonPost -Url "$ProducerBase/api/appointments/default" -Body '{"appointmentUuid":"auth2"}' -Headers @{ "X-Api-Key" = "wrong-key" }
+    $bad = Invoke-JsonPost -Url $webhookUrl -Body '{"event":"CREATED","appointmentUuid":"auth2"}' -Headers @{ "X-Api-Key" = "wrong-key" }
     Write-TestResult -Id "AUTH2" -Ok $false -Detail "expected 401 got $($bad.StatusCode)"
 } catch {
     $code = [int]$_.Exception.Response.StatusCode
@@ -245,18 +242,19 @@ try {
 # AUTH3 - valid key via X-Organization-Key header (default org)
 $startFar = (Get-Date).ToUniversalTime().AddDays(3).ToString("yyyy-MM-ddTHH:mm:ssZ")
 $jsonBody = @{
+    event = "CREATED"
     appointmentUuid = "auth3-$(Get-Random)"
+    status = "Scheduled"
     patientUuid = "p1"
     patientName = "Auth Test"
     patientPhone = "+31610000002"
     patientEmail = "auth3@example.com"
     startDateTime = $startFar
-    status = "Confirmed"
     location = "Loc"
-    instructions = "Inst"
+    comments = "Inst"
 } | ConvertTo-Json -Compress
 try {
-    $auth3 = Invoke-JsonPost -Url "$ProducerBase/api/appointments" -Body $jsonBody -Headers @{
+    $auth3 = Invoke-JsonPost -Url "$ProducerBase/api/webhooks/openmrs/appointments" -Body $jsonBody -Headers @{
         "X-Api-Key" = $ApiKey
         "X-Organization-Key" = "default"
     }
@@ -265,19 +263,19 @@ try {
     Write-TestResult -Id "AUTH3" -Ok $false -Detail $_.Exception.Message
 }
 
-# AUTH5 - org resolution: route wins over body
+# AUTH5 - org resolution: route wins over body (webhook uses route org)
 try {
-    $auth5 = Invoke-JsonPost -Url "$ProducerBase/api/appointments/default" -Body (@{
+    $auth5 = Invoke-JsonPost -Url $webhookUrl -Body (@{
+        event = "CREATED"
         appointmentUuid = "auth5-$(Get-Random)"
-        organizationKey = "other-org"
+        status = "Scheduled"
         patientUuid = "p1"
         patientName = "Auth5"
         patientPhone = "+31610000004"
         patientEmail = "a5@example.com"
         startDateTime = $startFar
-        status = "Confirmed"
         location = "L"
-        instructions = "I"
+        comments = "I"
     } | ConvertTo-Json -Compress) -Headers @{ "X-Api-Key" = $ApiKey }
     Write-TestResult -Id "AUTH5" -Ok ($auth5.StatusCode -eq 202) -Detail "route org default => $($auth5.StatusCode)"
 } catch {
@@ -286,69 +284,40 @@ try {
 
 # E15 empty body
 try {
-    Invoke-JsonPost -Url "$ProducerBase/api/appointments/default" -Body "" -Headers @{ "X-Api-Key" = $ApiKey }
+    Invoke-JsonPost -Url $webhookUrl -Body "" -Headers @{ "X-Api-Key" = $ApiKey }
     Write-TestResult -Id "E15" -Ok $false -Detail "expected 400"
 } catch {
     $code = [int]$_.Exception.Response.StatusCode
     Write-TestResult -Id "E15" -Ok ($code -eq 400) -Detail "empty body => $code"
 }
 
-# E7 invalid FHIR JSON
-$fhirBad = '{"resourceType":"Patient"}'
+# E8 invalid webhook (missing startDateTime)
 try {
-    Invoke-JsonPost -Url "$ProducerBase/fhir/Appointment/default" -Body $fhirBad -Headers @{
-        "X-Api-Key" = $ApiKey
-        Accept = "application/fhir+json"
-    } -ContentType "application/fhir+json"
-    Write-TestResult -Id "E8" -Ok $false -Detail "expected 400 for wrong resourceType"
+    Invoke-JsonPost -Url $webhookUrl -Body '{"event":"CREATED","appointmentUuid":"bad-1"}' -Headers @{ "X-Api-Key" = $ApiKey }
+    Write-TestResult -Id "E8" -Ok $false -Detail "expected 400 for missing startDateTime"
 } catch {
     $code = [int]$_.Exception.Response.StatusCode
-    Write-TestResult -Id "E8" -Ok ($code -eq 400) -Detail "wrong resourceType => $code"
+    Write-TestResult -Id "E8" -Ok ($code -eq 400) -Detail "missing startDateTime => $code"
 }
 
-# E3/E12 FHIR appointment ~70 min ahead (catch-up 24h)
+# E3 webhook appointment ~70 min ahead (catch-up 24h)
 $startSoon = (Get-Date).ToUniversalTime().AddMinutes(70).ToString("yyyy-MM-ddTHH:mm:ssZ")
 $uuid = "comprehensive-$(Get-Date -Format 'yyyyMMddHHmmss')"
-$fhirBody = @"
-{
-  "resourceType": "Appointment",
-  "status": "booked",
-  "start": "$startSoon",
-  "identifier": [{ "system": "http://openmrs.org/appointment", "value": "$uuid" }],
-  "participant": [{
-    "actor": { "reference": "Patient/p1", "display": "Comprehensive Test" },
-    "status": "accepted"
-  }],
-  "patientInstruction": "Test instructions",
-  "extension": [
-    { "url": "http://notification-module.local/StructureDefinition/patient-phone", "valueString": "+31612345678" },
-    { "url": "http://notification-module.local/StructureDefinition/patient-email", "valueString": "comprehensive@example.com" },
-    { "url": "http://notification-module.local/StructureDefinition/location-text", "valueString": "Test location" }
-  ]
-}
-"@
-$fhirResp = Invoke-JsonPost -Url "$ProducerBase/fhir/Appointment/default" -Body $fhirBody -Headers @{
-    "X-Api-Key" = $ApiKey
-    Accept = "application/fhir+json"
-} -ContentType "application/fhir+json"
-Write-TestResult -Id "E3" -Ok (($fhirResp.StatusCode -eq 201) -or ($fhirResp.StatusCode -eq 200)) -Detail "FHIR POST => $($fhirResp.StatusCode)"
-
-# E13 legacy JSON
-$jsonAppt = @{
-    appointmentUuid = "legacy-$uuid"
-    organizationKey = "default"
-    patientUuid = "p2"
-    patientName = "Legacy Test"
-    patientPhone = "+31610000003"
-    patientEmail = "legacy@example.com"
-    startDateTime = $startFar
-    status = "Confirmed"
-    location = "Loc"
-    instructions = "Inst"
+$webhookBody = @{
+    event = "CREATED"
+    appointmentUuid = $uuid
+    status = "Scheduled"
+    startDateTime = $startSoon
+    patientUuid = "p1"
+    patientName = "Comprehensive Test"
+    patientPhone = "+31612345678"
+    patientEmail = "comprehensive@example.com"
+    location = "Test location"
+    comments = "Test instructions"
 } | ConvertTo-Json -Compress
-$legacy = Invoke-JsonPost -Url "$ProducerBase/api/appointments/default" -Body $jsonAppt -Headers @{ "X-Api-Key" = $ApiKey }
-$legacyJson = $legacy.Content | ConvertFrom-Json
-Write-TestResult -Id "E13" -Ok (($legacy.StatusCode -eq 202) -and ($legacyJson.pendingNotifications -eq 2)) -Detail "legacy POST pending=$($legacyJson.pendingNotifications)"
+$webhookResp = Invoke-JsonPost -Url $webhookUrl -Body $webhookBody -Headers @{ "X-Api-Key" = $ApiKey }
+$webhookJson = $webhookResp.Content | ConvertFrom-Json
+Write-TestResult -Id "E3" -Ok (($webhookResp.StatusCode -eq 202) -and ($webhookJson.pendingNotifications -ge 1)) -Detail "webhook POST => $($webhookResp.StatusCode) pending=$($webhookJson.pendingNotifications)"
 
 # E17 consumer 404
 try {
@@ -376,7 +345,7 @@ Write-TestResult -Id "DB4" -Ok (($lines.Count -ge 1) -and ([int]$lines[0] -ge 1)
 Write-TestResult -Id "DB5" -Ok (($lines.Count -ge 2) -and ([int]$lines[1] -ge 1)) -Detail "api_keys count=$($lines[1])"
 Write-TestResult -Id "DB6" -Ok (($lines.Count -ge 3) -and ([int]$lines[2] -ge 1)) -Detail "provider_secrets count=$($lines[2])"
 Write-TestResult -Id "DB9" -Ok (($lines.Count -ge 4) -and ([int]$lines[3] -ge 1)) -Detail "appointments from ingest count=$($lines[3])"
-Write-TestResult -Id "DB9b" -Ok (($lines.Count -ge 5) -and ([int]$lines[4] -ge 2)) -Detail "pending reminders for FHIR appt=$($lines[4])"
+Write-TestResult -Id "DB9b" -Ok (($lines.Count -ge 5) -and ([int]$lines[4] -ge 2)) -Detail "pending reminders for webhook appt=$($lines[4])"
 
 # SEC1 - no plaintext keys
 $secOut = (@'
@@ -481,8 +450,13 @@ for ($i = 1; $i -le 10; $i++) {
 }
 Write-TestResult -Id "L1" -Ok $lokiOk -Detail "Loki /ready"
 
-# --- SEC3 metadata public ---
-Write-TestResult -Id "SEC3" -Ok $metaOk -Detail "/fhir/metadata accessible without API key"
+# --- SEC3 health endpoint public (no API key) ---
+$healthOk = $false
+try {
+    $health = Invoke-WebRequest -Uri "$ProducerBase/health" -UseBasicParsing
+    $healthOk = ($health.StatusCode -eq 200) -and ($health.Content.Trim() -eq "Healthy")
+} catch { }
+Write-TestResult -Id "SEC3" -Ok $healthOk -Detail "/health accessible without API key"
 
 # --- SEC2 encrypted secrets ---
 $sec2Out = (@'

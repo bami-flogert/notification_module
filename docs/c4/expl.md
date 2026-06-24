@@ -39,7 +39,7 @@ Toont de deploybare onderdelen van het systeem en hoe ze communiceren.
 | Container | Verantwoordelijkheid |
 | --------- | -------------------- |
 | **OpenMRS 3.0 + Notification Bridge OMOD** | Vangt appointment-events op; outbox + HTTP POST naar Communicatiemodule (geen core-wijzigingen) |
-| Producer API | Ontvangt webhooks (`/api/webhooks/openmrs/...`) en FHIR; plant notificaties in de database |
+| Producer API | Ontvangt OpenMRS-webhooks (`/api/webhooks/openmrs/...`) en plant notificaties in de database |
 | Scheduler | Pollt de database en publiceert berichten naar RabbitMQ op het juiste moment |
 | Message Broker (RabbitMQ) | Verdeelt berichten via fanout exchange naar provider-queues |
 | Consumer | Leest queues uit, verstuurt naar providers en logt het resultaat |
@@ -82,7 +82,6 @@ Toont de belangrijkste **code-componenten** binnen de Producer- en Consumer-cont
 | --------- | --------- | -------------------- |
 | `OpenMrsWebhookController` | Producer | Ontvangt OMOD JSON-webhook, mapt naar intern model |
 | `OpenMrsWebhookMapper` | Producer | Vertaalt `event`/`status`/velden naar `AppointmentMessage` |
-| `FhirAppointmentController` | Producer | Ontvangt FHIR `Appointment` POST, valideert encoding en payload, mapt naar intern model |
 | `AppointmentIngestionService` | Producer | Upsert `appointments`, plant of annuleert `scheduled_notifications` |
 | `NotificationSchedulerWorker` | Producer | Pollt due rijen, claimt `Pending → Publishing`, roept publisher aan |
 | `RabbitMqPublisher` | Producer | Serialiseert `AppointmentMessage` en publiceert naar RabbitMQ exchange |
@@ -118,13 +117,9 @@ Volledige keten van afspraak-intake tot delivery-log, inclusief alternatieve pad
 9. **NotificationDispatcher + provider adapter** — HTTP naar messaging provider
 10. **DeliveryTrackingService** — write `notification_deliveries` + `billing_delivery_events`
 
-### Alternatief pad (FHIR-client)
-
-Stappen 1–2 vervangen door: **Client** → POST FHIR `Appointment` → `FhirAppointmentController` → verder vanaf stap 4.
-
 Bij provider-fout: **fallback republish** naar de volgende provider in de organisatieketen (zie [`RELIABILITY.md`](../RELIABILITY.md)).
 
-### Alternatieve paden (vanaf stap 3)
+### Alternatieve paden (vanaf stap 4)
 
 | Trigger | Gedrag |
 | ------- | ------ |

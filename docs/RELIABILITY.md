@@ -2,7 +2,7 @@
 
 Dit document beschrijft hoe de notificatiemodule omgaat met fouten en tijdelijke storingen. Betrouwbaarheid is opgebouwd in lagen:
 
-1. **OpenMRS-client** — retry bij intake-fouten (FHIR POST)
+1. **OpenMRS OMOD** — outbox + retry bij webhook POST naar Producer
 2. **Scheduler (producer)** — polling, publish-retry, herstel van vastgelopen `Publishing`-rijen
 3. **RabbitMQ** — message-retry en dead-letter queues (DLQ)
 4. **Provider HTTP** — maximaal 3 pogingen per adapter
@@ -11,8 +11,8 @@ Dit document beschrijft hoe de notificatiemodule omgaat met fouten en tijdelijke
 
 ```mermaid
 flowchart TD
-    subgraph openmrs [OpenMRS client]
-        FHIR["POST /fhir/Appointment"]
+    subgraph openmrs [OpenMRS OMOD]
+        Webhook["POST /api/webhooks/openmrs/appointments"]
     end
     subgraph producer [Producer]
         Scheduler["NotificationSchedulerWorker"]
@@ -31,7 +31,7 @@ flowchart TD
         Track["DeliveryTrackingService"]
     end
 
-    FHIR --> Scheduler
+    Webhook --> Scheduler
     Scheduler --> Stale
     Stale -->|"Publishing > 5 min → Pending"| Scheduler
     Scheduler -->|"Pending → Publishing → Queued"| Publish
@@ -57,7 +57,7 @@ flowchart TD
 | `Queued` | Succesvol gepubliceerd naar RabbitMQ |
 | `Sent` | Minstens één provider heeft succesvol geleverd |
 | `Failed` | Alle providers in de keten hebben gefaald |
-| `Cancelled` | Afspraak geannuleerd of bijgewerkt — zie [`APPOINTMENT_ENDPOINT.md`](APPOINTMENT_ENDPOINT.md) |
+| `Cancelled` | Afspraak geannuleerd of bijgewerkt — zie [`OMOD_BRIDGE.md`](openmrs/OMOD_BRIDGE.md) |
 
 Implementatie: [`ScheduledNotificationStatuses`](../src/NotificationModule.Shared/Persistence/ScheduledNotificationStatuses.cs)
 
@@ -220,9 +220,9 @@ Prometheus-metriek: `notification_messages_dlq_total` (tags: `queue`, `provider`
 
 ## OpenMRS-client: retry-richtlijnen
 
-OpenMRS (of een andere FHIR-client) is verantwoordelijk voor retries bij **intake**-fouten. Reminder-levering wordt intern afgehandeld (scheduler, RabbitMQ, provider fallback) — herhaald POSTen is daarvoor **niet** nodig.
+De OpenMRS Notification Bridge OMOD is verantwoordelijk voor retries bij **intake**-fouten (webhook POST). Reminder-levering wordt intern afgehandeld (scheduler, RabbitMQ, provider fallback) — herhaald POSTen is daarvoor **niet** nodig.
 
-Zie ook [`FHIR_ENDPOINT.md`](FHIR_ENDPOINT.md) voor statuscodes en payload-eisen.
+Zie ook [`OMOD_BRIDGE.md`](openmrs/OMOD_BRIDGE.md) voor het webhook-contract.
 
 | HTTP-respons | Actie client |
 |--------------|--------------|
@@ -237,7 +237,7 @@ Veilig om opnieuw te POSTen met dezelfde `(organizationKey, appointmentUuid)` �
 
 ### Monitoring leveringen
 
-Beheerders monitoren uitkomsten via het Grafana-dashboard en [`GET /api/reports/deliveries`](DASHBOARD_DATABASE.md) — niet via herhaalde FHIR-posts.
+Beheerders monitoren uitkomsten via het Grafana-dashboard en [`GET /api/reports/deliveries`](DASHBOARD_DATABASE.md) — niet via herhaalde webhook-posts.
 
 ---
 
@@ -256,9 +256,8 @@ Beheerders monitoren uitkomsten via het Grafana-dashboard en [`GET /api/reports/
 
 ## Gerelateerd
 
-- Scheduler-gedrag: [`APPOINTMENT_ENDPOINT.md`](APPOINTMENT_ENDPOINT.md)
-- FHIR-intake statuscodes: [`FHIR_ENDPOINT.md`](FHIR_ENDPOINT.md)
-- ADR: [0009-dead-letter-queues.md](madr/0009-dead-letter-queues.md), [0010-fhir-integratie.md](madr/0010-fhir-integratie.md)
+- Scheduler-gedrag: [`OMOD_BRIDGE.md`](openmrs/OMOD_BRIDGE.md)
+- ADR: [0009-dead-letter-queues.md](madr/0009-dead-letter-queues.md), [0011-openmrs-omod-bridge.md](madr/0011-openmrs-omod-bridge.md)
 - Uitbreiden (providers, queues): [`EXTENSIBILITY.md`](EXTENSIBILITY.md)
 
 ---

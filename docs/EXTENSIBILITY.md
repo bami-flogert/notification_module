@@ -75,7 +75,7 @@ Nu draait alles om **afspraken** (`AppointmentMessage`, FHIR `Appointment`, heri
 | RabbitMQ | `RabbitMqTopology.cs` | Nieuwe exchange of routing keys, bijv. `lab.notifications` + wachtrij per provider. |
 | Consumer | Nieuwe worker of uitbreiding van `NotificationWorker` | Lees de lab-wachtrij, roep dezelfde `INotificationProvider`-adapters aan met aangepaste tekst. |
 | Tekst | `NotificationMessageBuilder` (issue #1) of aparte builder | Eén plek voor de SMS-tekst van labuitslagen. |
-| Docs | `FHIR_ENDPOINT.md` of nieuw `LAB_ENDPOINT.md` | Hoe OpenMRS (of een ander systeem) moet posten. |
+| Docs | `openmrs/OMOD_BRIDGE.md` of nieuw endpoint-doc | Hoe OpenMRS (of een ander systeem) moet posten. |
 
 Dit is meer werk dan alleen een vijfde provider; plan het als een kleine epic met eigen tests.
 
@@ -87,8 +87,7 @@ Dit is meer werk dan alleen een vijfde provider; plan het als een kleine epic me
 
 | Onderdeel | Tekenset |
 |-----------|----------|
-| FHIR-intake (`POST /fhir/Appointment`) | **UTF-8** — body is JSON (`application/fhir+json`). |
-| Legacy JSON-intake (`POST /api/appointments`) | **UTF-8** — standaard voor ASP.NET JSON. |
+| OpenMRS webhook (`POST /api/webhooks/openmrs/appointments`) | **UTF-8** — standaard voor ASP.NET JSON. |
 | Berichten op RabbitMQ | **UTF-8** — JSON-body. |
 | SwiftSend, SecurePost, AsyncFlow | **UTF-8** in JSON-body. |
 | LegacyLink | **UTF-8** — XML begint met `<?xml version="1.0" encoding="utf-8"?>`. |
@@ -98,22 +97,21 @@ Gebruik in namen en teksten gewone Unicode (Nederlands, emoji in testomgeving, e
 
 ### Wat clients moeten doen
 
-- Stuur FHIR met `Content-Type: application/fhir+json` (liefst **zonder** een andere charset in de header, of expliciet `charset=utf-8`).
+- Stuur webhook JSON met `Content-Type: application/json; charset=utf-8`.
 - Sla bestanden niet op als Latin-1 of Windows-1252 en stuur ze dan als “JSON” — dat geeft kapotte tekens of parsefouten.
 
-### Fout bij verkeerde of onleesbare bytes
+### Fout bij ongeldige payload
 
-- **`Content-Type` met andere charset dan UTF-8** (bijv. `charset=iso-8859-1`): HTTP **400** met `OperationOutcome` — *“Only UTF-8 is supported…”*
-- **Body geen geldige UTF-8-bytes:** HTTP **400** met `OperationOutcome` — *“Request body is not valid UTF-8…”*
-- **Ongeldige JSON / FHIR:** HTTP **400** met `OperationOutcome` (fouttekst in `diagnostics`).
-- **Lege body:** ook **400** met `OperationOutcome`.
+- **Ongeldige JSON:** HTTP **400** met fouttekst.
+- **Lege body:** HTTP **400**.
+- **Ontbrekende verplichte velden** (`appointmentUuid`, `startDateTime`): HTTP **400**.
 
-Implementatie: `FhirRequestEncoding` en `FhirAppointmentController` in de producer.
+Implementatie: `OpenMrsWebhookController` en `OpenMrsWebhookMapper` in de producer.
 
 ---
 
 ## Gerelateerde documentatie
 
 - [RELIABILITY.md](RELIABILITY.md) — retries, DLQ
-- [FHIR_ENDPOINT.md](FHIR_ENDPOINT.md) — afspraak-intake
+- [OMOD_BRIDGE.md](openmrs/OMOD_BRIDGE.md) — afspraak-intake
 - [madr/0010-fhir-integratie.md](madr/0010-fhir-integratie.md) — waarom FHIR

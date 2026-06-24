@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using NotificationModule.Producer.Fhir;
 using NotificationModule.Producer.OpenMrs;
 using NotificationModule.Producer.Security;
 using NotificationModule.Producer.Services;
@@ -32,8 +31,6 @@ builder.Services.AddDbContextFactory<NotificationDbContext>(options =>
 builder.Services.AddSingleton<RabbitMqPublisher>();
 builder.Services.AddSingleton<INotificationMessagePublisher>(sp => sp.GetRequiredService<RabbitMqPublisher>());
 builder.Services.AddScoped<AppointmentIngestionService>();
-builder.Services.AddSingleton<FhirAppointmentMapper>();
-builder.Services.AddSingleton<FhirAppointmentValidator>();
 builder.Services.AddSingleton<OpenMrsWebhookMapper>();
 builder.Services.AddSingleton<OrganizationApiKeyService>();
 builder.Services.AddSingleton<OrganizationProviderPolicyService>();

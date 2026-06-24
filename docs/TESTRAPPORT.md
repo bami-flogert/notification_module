@@ -63,7 +63,7 @@ Deze punten sluiten aan op de FMEA (Producer, RabbitMQ, Consumer, PostgreSQL). P
 
 - **Nieuwe provider zonder dispatcher aan te passen** — adapter + queue-mapping volstaan. *Tests:* `NotificationQueueMappingTests`, `SwiftSendProviderMessageIdTests`.
 - **Per organisatie eigen providerkeuze en fallback** — preferred + fallback chain per tenant. *Tests:* `OrganizationProviderPolicyServiceTests`, `OrganizationsApiTests`.
-- **FHIR en UTF-8** — validatie en mapping van afspraakresources. *Tests:* `FhirRequestEncodingTests`, `FhirAppointmentMapperTests`.
+- **OpenMRS webhook** — mapping en validatie van OMOD-payload. *Tests:* `OpenMrsWebhookMapperTests`, `OpenMrsWebhookApiTests`.
 - **Toekomstige meldingtypes** — gedocumenteerd pad (o.a. labuitslag in [EXTENSIBILITY.md](EXTENSIBILITY.md)); patroon in `NotificationMessageBuilderTests`.
 - **Factuurcontrole zonder PII** — rapportage op meta-niveau. *Tests:* `BillingDeliveriesReportServiceTests`, `ReportsApiTests`.
 
@@ -172,7 +172,7 @@ Voor koppeling aan opdracht/FMEA zonder de leestekst hierboven te herhalen.
 | ------------------------------ | ------------------------------------------------------------------------------------ |
 | Vier providers + queue-mapping | `NotificationQueueMappingTests`, `SwiftSendProviderMessageIdTests`                   |
 | Multi-tenant providerbeleid    | `OrganizationProviderPolicyServiceTests`, `OrganizationsApiTests`                    |
-| Tekenset / FHIR                | `FhirRequestEncodingTests`, `FhirAppointmentMapperTests`                             |
+| OpenMRS webhook intake         | `OpenMrsWebhookMapperTests`, `OpenMrsWebhookApiTests`                                |
 | Nieuwe meldingtypes (ontwerp)  | [EXTENSIBILITY.md](EXTENSIBILITY.md) § labuitslag; `NotificationMessageBuilderTests` |
 | Billing / rapportage           | `BillingDeliveriesReportServiceTests`, `ReportsApiTests`                             |
 

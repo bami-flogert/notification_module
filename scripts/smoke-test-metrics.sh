@@ -67,23 +67,26 @@ fi
 
 APPOINTMENT_JSON=$(cat <<EOF
 {
+  "event": "CREATED",
   "appointmentUuid": "smoke-metrics-$(date +%s)",
-  "organizationKey": "default",
+  "status": "Scheduled",
+  "startDateTime": "${START_DATE_TIME}",
   "patientUuid": "patient-smoke-metrics",
   "patientName": "Smoke Metrics",
   "patientPhone": "+31610000001",
   "patientEmail": "smoke-metrics@example.com",
-  "startDateTime": "${START_DATE_TIME}",
-  "status": "Confirmed",
   "location": "Smoke metrics location",
-  "instructions": "Smoke metrics appointment"
+  "comments": "Smoke metrics appointment"
 }
 EOF
 )
 
+API_KEY="${APIKEY_SEED_DEFAULT:-change-me-in-prod}"
+
 echo "==> Posting test appointment: startDateTime=${START_DATE_TIME}"
-curl -sS -X POST "http://127.0.0.1:5001/api/appointments/default" \
+curl -sS -X POST "http://127.0.0.1:5001/api/webhooks/openmrs/appointments/default" \
   -H "Content-Type: application/json" \
+  -H "X-Api-Key: ${API_KEY}" \
   -d "$APPOINTMENT_JSON"
 echo
 

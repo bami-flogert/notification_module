@@ -90,7 +90,7 @@ X-Api-Key: <key>
 Content-Type: application/json
 ```
 
-Antwoord: `202 Accepted` met aantal geplande reminders (zelfde semantiek als legacy `/api/appointments`).
+Antwoord: `202 Accepted` met aantal geplande reminders.
 
 Mapping: `OpenMrsWebhookMapper` → `AppointmentMessage` → `AppointmentIngestionService`.
 
@@ -104,5 +104,4 @@ Mapping: `OpenMrsWebhookMapper` → `AppointmentMessage` → `AppointmentIngesti
 ## Zie ook
 
 - [INTEGRATION_POINTS.md](INTEGRATION_POINTS.md)
-- [../FHIR_ENDPOINT.md](../FHIR_ENDPOINT.md) — alternatief intake-pad (FHIR clients)
 - [../fmea/FMEA.md](../fmea/FMEA.md) — failure modes bridge + Producer

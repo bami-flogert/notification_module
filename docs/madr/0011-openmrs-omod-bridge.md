@@ -24,7 +24,7 @@ We bouwen een **eigen dunne OMOD** (`notification-bridge`) die:
 
 De Communicatiemodule mapt de webhook naar het interne `AppointmentMessage`-model (`OpenMrsWebhookMapper`) en hergebruikt `AppointmentIngestionService` voor idempotente opslag en reminder-planning.
 
-**FHIR** blijft een **secundair** intake-pad voor clients die FHIR R4 prefereren ([ADR 0010](0010-fhir-integratie.md)); de primaire OpenMRS-koppeling is de OMOD-webhook.
+Eerdere intake-paden (legacy JSON en FHIR) zijn verwijderd; zie [ADR 0010](0010-fhir-integratie.md) (Superseded).
 
 ## Gevolgen
 
@@ -39,7 +39,6 @@ De Communicatiemodule mapt de webhook naar het interne `AppointmentMessage`-mode
 
 - Extra artefact (Java OMOD) naast de .NET-stack; aparte build en release.
 - Contactgegevens (telefoon/e-mail) moeten in de OMOD worden verrijkt als Appointment Scheduling die niet standaard levert.
-- Twee intake-paden (webhook + FHIR) blijven gedocumenteerd en getest.
 
 ## Zie ook
 
