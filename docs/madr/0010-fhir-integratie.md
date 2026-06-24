@@ -14,7 +14,9 @@ Ook moet duidelijk zijn wanneer een afspraak **echt is opgeslagen** in onze data
 
 ## Besluit
 
-We gebruiken **FHIR R4** met het resource-type `**Appointment`** als voorkeursintake op `POST /fhir/Appointment`.
+We gebruiken **FHIR R4** met het resource-type `**Appointment`** als intake op `POST /fhir/Appointment` voor **FHIR-clients** en handmatige/tests.
+
+De **primaire OpenMRS 3.0-koppeling** is de Notification Bridge OMOD die een JSON-webhook POST naar `POST /api/webhooks/openmrs/appointments/{organizationKey}` stuurt (zie [ADR 0011](0011-openmrs-omod-bridge.md)). De OMOD kan desgewenst FHIR2 intern gebruiken om contactgegevens te verrijken, maar de payload naar onze module is het vastgelegde webhook-contract.
 
 Waarom FHIR:
 

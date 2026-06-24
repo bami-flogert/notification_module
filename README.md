@@ -48,6 +48,32 @@ Zie [`docs/DASHBOARD_DATABASE.md`](docs/DASHBOARD_DATABASE.md) voor DB data-flow
 
 Health endpoints: producer `http://localhost:5001/health` (liveness) en `/ready` (Postgres + RabbitMQ); consumer `http://localhost:5002/health` en `/ready`.
 
+## Voorbeeldrequest (OpenMRS OMOD webhook)
+
+De primaire OpenMRS-koppeling is een JSON-webhook van de Notification Bridge OMOD:
+
+```bash
+curl -X POST http://localhost:5001/api/webhooks/openmrs/appointments/default \
+  -H "X-Api-Key: change-me-in-prod" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event": "CREATED",
+    "appointmentUuid": "openmrs-appointment-123",
+    "status": "Scheduled",
+    "startDateTime": "2026-06-24T09:00:00Z",
+    "endDateTime": "2026-06-24T09:30:00Z",
+    "patientUuid": "openmrs-patient-456",
+    "patientName": "John Doe",
+    "patientPhone": "+31612345678",
+    "patientEmail": "john@example.com",
+    "service": "General Medicine",
+    "location": "Outpatient",
+    "comments": "Neem een geldig identiteitsbewijs mee."
+  }'
+```
+
+Zie [`docs/openmrs/OMOD_BRIDGE.md`](docs/openmrs/OMOD_BRIDGE.md).
+
 ## Voorbeeldrequest (FHIR)
 
 De producer accepteert FHIR R4 `Appointment` resources op `POST /fhir/Appointment` (HL7 ACK via `OperationOutcome` in het antwoord). Zie [`docs/FHIR_ENDPOINT.md`](docs/FHIR_ENDPOINT.md).
@@ -89,6 +115,10 @@ Het platte JSON-endpoint `POST /api/appointments` blijft beschikbaar maar is ver
 | Testrapportage (betrouwbaarheid & uitbreidbaarheid) | [`docs/TESTRAPPORT.md`](docs/TESTRAPPORT.md) |
 | Performancerapportage (throughput & monitoring) | [`docs/PERFORMANCERAPPORT.md`](docs/PERFORMANCERAPPORT.md) |
 | Architectuur (C4 diagrammen) | [`docs/c4/expl.md`](docs/c4/expl.md) |
+| OpenMRS OMOD-bridge | [`docs/openmrs/OMOD_BRIDGE.md`](docs/openmrs/OMOD_BRIDGE.md) |
+| Requirements traceability | [`docs/REQUIREMENTS_TRACEABILITY.md`](docs/REQUIREMENTS_TRACEABILITY.md) |
+| Testontwerp (FMEA) | [`docs/TESTONTWERP_FMEA.md`](docs/TESTONTWERP_FMEA.md) |
+| FMEA | [`docs/fmea/FMEA.md`](docs/fmea/FMEA.md) |
 | Productie-deployment en TLS 1.3 | [`docs/PRODUCTION_SECURITY.md`](docs/PRODUCTION_SECURITY.md) |
 | Architectuurbeslissingen | [`docs/madr/README.md`](docs/madr/README.md) |
 

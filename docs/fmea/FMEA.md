@@ -2,6 +2,42 @@
 
 Per component kijken we wat er mis kan gaan, wat het gevolg is en hoe we dat hebben opgelost in de code.
 
+Traceability naar tests: [TESTONTWERP_FMEA.md](../TESTONTWERP_FMEA.md) · Requirements: [REQUIREMENTS_TRACEABILITY.md](../REQUIREMENTS_TRACEABILITY.md)
+
+---
+
+## OpenMRS Notification Bridge OMOD
+
+### Producer endpoint down of timeout
+
+* **Effect:** afspraak-event bereikt de Communicatiemodule niet; geen reminders
+* **Oorzaak:** netwerk, Producer herstart, TLS-fout
+* **Maatregel:** outbox-tabel in OMOD; rijen blijven `PENDING` tot HTTP `2xx`; exponential backoff (zie [OMOD_BRIDGE.md](../openmrs/OMOD_BRIDGE.md))
+
+### Dubbele webhook voor dezelfde afspraak
+
+* **Effect:** dubbele notificaties bij patiënt
+* **Oorzaak:** retry in OMOD na timeout terwijl Producer wél heeft opgeslagen; dubbele events in OpenMRS
+* **Maatregel:** upsert op `(organization_id, appointment_uuid)` in `AppointmentIngestionService`; `FOR UPDATE SKIP LOCKED` bij scheduler
+
+### Event-volgorde: update vóór cancel of omgekeerd
+
+* **Effect:** verkeerde reminder-status (bijv. cancel overschreven door late update)
+* **Oorzaak:** asynchrone HTTP, outbox-replay
+* **Maatregel:** `event: CANCELLED` forceert cancel-logica; laatste succesvolle POST wint op UUID; documenteer ordering-beperking in demo
+
+### Ontbrekende contactgegevens in webhook
+
+* **Effect:** notificatie kan niet worden afgeleverd via SMS/e-mail
+* **Oorzaak:** Appointment Scheduling levert geen telefoon/e-mail; OMOD stuurt alleen basisvelden
+* **Maatregel:** OMOD verrijkt optioneel via Patient-API; Consumer logt `Failed` in `notification_deliveries`; FMEA-test T-OMOD-04
+
+### Ongeldige payload (ontbrekende UUID of datum)
+
+* **Effect:** 400 van Producer; event blijft in outbox of wordt als poison gemarkeerd
+* **Oorzaak:** mappingfout in OMOD
+* **Maatregel:** `OpenMrsWebhookMapper` valideert verplichte velden; OMOD logt 4xx en markeert outbox `FAILED` (geen eindeloze retry)
+
 ---
 
 ## Producer API
