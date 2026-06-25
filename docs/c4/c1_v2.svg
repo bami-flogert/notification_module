@@ -51,11 +51,11 @@
   <text x="520" y="325" style="fill:rgb(0, 0, 0);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Comic Sans MS&quot;, &quot;Chalkboard SE&quot;, cursive;font-size:13px;font-weight:700;text-anchor:start;dominant-baseline:auto">SecurePost</text>
   <text x="520" y="342" style="fill:rgb(0, 0, 0);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Comic Sans MS&quot;, &quot;Chalkboard SE&quot;, cursive;font-size:11px;font-weight:400;text-anchor:start;dominant-baseline:auto">messaging provider</text>
 
-  <!-- Pijl: Patient naar systeem (via boven, geen overlap) -->
-  <polyline points="160,83 195,83 195,200 228,200" marker-end="url(#pa)" mask="url(#imagine-text-gaps-cku2fl)" style="fill:none;stroke:rgb(0, 0, 0);color:rgb(255, 255, 255);stroke-width:2px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+  <!-- Pijl: systeem naar Patient (systeem stuurt notificaties) -->
+  <polyline points="228,200 195,200 195,83 160,83" marker-end="url(#pa)" mask="url(#imagine-text-gaps-cku2fl)" style="fill:none;stroke:rgb(0, 0, 0);color:rgb(255, 255, 255);stroke-width:2px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
 
   <!-- Label naast polyline, niet op de lijn -->
-  <text x="163" y="76" style="fill:rgb(0, 0, 0);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Comic Sans MS&quot;, &quot;Chalkboard SE&quot;, cursive;font-size:11px;font-weight:400;text-anchor:start;dominant-baseline:auto">afspraken</text>
+  <text x="163" y="76" style="fill:rgb(0, 0, 0);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Comic Sans MS&quot;, &quot;Chalkboard SE&quot;, cursive;font-size:11px;font-weight:400;text-anchor:start;dominant-baseline:auto">notificaties</text>
 
   <!-- Pijl: Beheerder naar systeem -->
   <line x1="160" y1="213" x2="228" y2="213" marker-end="url(#pa)" mask="url(#imagine-text-gaps-cku2fl)" style="fill:none;stroke:rgb(0, 0, 0);color:rgb(255, 255, 255);stroke-width:2px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
@@ -63,7 +63,7 @@
 
   <!-- Pijl: OpenMRS org naar systeem (via onder) -->
   <polyline points="160,348 195,348 195,242 228,242" marker-end="url(#pa)" mask="url(#imagine-text-gaps-cku2fl)" style="fill:none;stroke:rgb(0, 0, 0);color:rgb(255, 255, 255);stroke-width:2px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
-  <text x="163" y="342" style="fill:rgb(0, 0, 0);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Comic Sans MS&quot;, &quot;Chalkboard SE&quot;, cursive;font-size:11px;font-weight:400;text-anchor:start;dominant-baseline:auto">abonnement</text>
+  <text x="163" y="342" style="fill:rgb(0, 0, 0);stroke:none;color:rgb(255, 255, 255);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Comic Sans MS&quot;, &quot;Chalkboard SE&quot;, cursive;font-size:11px;font-weight:400;text-anchor:start;dominant-baseline:auto">afspraken (FHIR)</text>
 
   <!-- Pijlen naar providers (rechts, gespreide L-shapes) -->
   <polyline points="450,205 480,205 480,81 508,81" marker-end="url(#pa)" mask="url(#imagine-text-gaps-cku2fl)" style="fill:none;stroke:rgb(0, 0, 0);color:rgb(255, 255, 255);stroke-width:2px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
