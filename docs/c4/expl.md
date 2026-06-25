@@ -20,19 +20,18 @@ Toont de deploybare onderdelen van het systeem en hoe ze communiceren.
 
 ![c2](c2_v2.svg)
 
-| Container                 | Verantwoordelijkheid                                                         |
-| ------------------------- | ---------------------------------------------------------------------------- |
-| Producer API              | Ontvangt afspraken via REST en plant notificaties in de database             |
-| Scheduler                 | Pollt de database en publiceert berichten naar RabbitMQ op het juiste moment |
-| Message Broker (RabbitMQ) | Verdeelt berichten via fanout exchange naar vier provider-queues             |
-| Consumer                  | Leest queues uit, verstuurt naar providers en logt het resultaat             |
-| Database (PostgreSQL)     | Slaat afspraken, notificaties, delivery-logs en versleutelde secrets op      |
+| Container                 | Verantwoordelijkheid                                                                            |
+| ------------------------- | ----------------------------------------------------------------------------------------------- |
+| Producer API              | Ontvangt afspraken via REST/FHIR en plant notificaties in de database; bevat ook de scheduler-worker (`NotificationSchedulerWorker`) die als achtergrondproces due rijen pollt en naar RabbitMQ publiceert |
+| Message Broker (RabbitMQ) | Routeert berichten via een direct exchange (routing key per provider) naar vier provider-queues |
+| Consumer                  | Leest queues uit, verstuurt naar providers en logt het resultaat                                |
+| Database (PostgreSQL)     | Slaat afspraken, notificaties, delivery-logs en versleutelde secrets op                         |
 
 ---
 
 ## C3 Component diagram
 
-Toont de belangrijkste **code-componenten** binnen de Producer- en Consumer-containers (C4 Level 3). De scheduler draait in hetzelfde Producer-proces als de REST API; C2 toont ze soms apart voor leesbaarheid.
+Toont de belangrijkste **code-componenten** binnen de Producer- en Consumer-containers (C4 Level 3). De scheduler (`NotificationSchedulerWorker`) draait als hosted service in hetzelfde Producer-proces als de REST API.
 
 ![c3](c3_components.svg)
 
@@ -45,7 +44,7 @@ Toont de belangrijkste **code-componenten** binnen de Producer- en Consumer-cont
 | `NotificationWorker` | Consumer | Consumeert provider-queues, deserialiseert berichten, orkestreert dispatch |
 | `NotificationDispatcher` | Consumer | Roept de juiste provider-adapter aan op basis van queue/routing key |
 | `SwiftSendProvider` | Consumer | JSON REST naar SwiftSend (FakeComWorld) |
-| `LegacyLinkProvider` | Consumer | XML/SOAP naar LegacyLink |
+| `LegacyLinkProvider` | Consumer | XML over HTTP met Basic auth naar LegacyLink |
 | `SecurePostProvider` | Consumer | OAuth + JSON naar SecurePost |
 | `AsyncFlowProvider` | Consumer | Async JSON workflow naar AsyncFlow |
 | `ProviderSecretsStore` | Consumer | Haalt en decrypt provider credentials uit `provider_secrets` |
