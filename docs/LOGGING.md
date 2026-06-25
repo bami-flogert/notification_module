@@ -36,7 +36,7 @@ Log deze nooit (ook niet als gestructureerde logargumenten of exception-tekst op
 
 ## Richtlijnen per component
 
-### Producer — `FhirAppointmentController`
+### Producer — `OpenMrsWebhookController`
 
 - Log afspraak-UUID en organizationsleutel bij intake.
 - Log **geen** patiëntweergavenaam, telefoon, e-mail of de binnenkomende FHIR JSON-body.

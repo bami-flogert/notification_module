@@ -18,41 +18,32 @@ docker compose --env-file env.example up --build -d
 
 echo "==> Waiting for producer HTTP on :5001…"
 for i in {1..60}; do
-  code="$(curl -s -o /dev/null -w "%{http_code}" -X GET "http://127.0.0.1:5001/fhir/metadata" \
-    -H "Accept: application/fhir+json" || true)"
+  code="$(curl -s -o /dev/null -w "%{http_code}" -X GET "http://127.0.0.1:5001/health" || true)"
   if [[ "$code" == "200" ]]; then
     break
   fi
   sleep 2
 done
 if [[ "${code:-000}" != "200" ]]; then
-  echo "Producer did not become reachable on :5001 (metadata returned ${code:-000})." >&2
+  echo "Producer did not become reachable on :5001 (health returned ${code:-000})." >&2
   exit 1
 fi
 
-echo "==> POST FHIR Appointment (start=${START_DATE_TIME})…"
-curl -sS -w "\nHTTP %{http_code}\n" -X POST "http://localhost:5001/fhir/Appointment/default" \
-  -H "Content-Type: application/fhir+json" \
-  -H "Accept: application/fhir+json" \
+echo "==> POST OpenMRS webhook (start=${START_DATE_TIME})…"
+curl -sS -w "\nHTTP %{http_code}\n" -X POST "http://localhost:5001/api/webhooks/openmrs/appointments/default" \
+  -H "Content-Type: application/json" \
   -H "X-Api-Key: ${API_KEY}" \
   -d "{
-    \"resourceType\": \"Appointment\",
-    \"status\": \"booked\",
-    \"start\": \"${START_DATE_TIME}\",
-    \"identifier\": [{
-      \"system\": \"http://openmrs.org/appointment\",
-      \"value\": \"smoke-1\"
-    }],
-    \"participant\": [{
-      \"actor\": { \"reference\": \"Patient/patient-1\", \"display\": \"Smoke Test\" },
-      \"status\": \"accepted\"
-    }],
-    \"patientInstruction\": \"Smoke test instructions\",
-    \"extension\": [
-      { \"url\": \"http://notification-module.local/StructureDefinition/patient-phone\", \"valueString\": \"+31612345678\" },
-      { \"url\": \"http://notification-module.local/StructureDefinition/patient-email\", \"valueString\": \"smoke@example.com\" },
-      { \"url\": \"http://notification-module.local/StructureDefinition/location-text\", \"valueString\": \"Smoke test location\" }
-    ]
+    \"event\": \"CREATED\",
+    \"appointmentUuid\": \"smoke-1\",
+    \"status\": \"Scheduled\",
+    \"startDateTime\": \"${START_DATE_TIME}\",
+    \"patientUuid\": \"patient-1\",
+    \"patientName\": \"Smoke Test\",
+    \"patientPhone\": \"+31612345678\",
+    \"patientEmail\": \"smoke@example.com\",
+    \"location\": \"Smoke test location\",
+    \"comments\": \"Smoke test instructions\"
   }" | head -c 800
 echo
 

@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Filters;
+using NotificationModule.Producer.OpenMrs;
 using NotificationModule.Producer.Security;
 using NotificationModule.Producer.Services;
 using NotificationModule.Shared.Models;
@@ -7,17 +7,20 @@ using NotificationModule.Shared.Models;
 namespace NotificationModule.Producer.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/webhooks/openmrs/appointments")]
 [ServiceFilter(typeof(AppointmentApiKeyAuthFilter))]
-public class AppointmentsController : ControllerBase
+public sealed class OpenMrsWebhookController : ControllerBase
 {
+    private readonly OpenMrsWebhookMapper _mapper;
     private readonly AppointmentIngestionService _ingestionService;
-    private readonly ILogger<AppointmentsController> _logger;
+    private readonly ILogger<OpenMrsWebhookController> _logger;
 
-    public AppointmentsController(
+    public OpenMrsWebhookController(
+        OpenMrsWebhookMapper mapper,
         AppointmentIngestionService ingestionService,
-        ILogger<AppointmentsController> logger)
+        ILogger<OpenMrsWebhookController> logger)
     {
+        _mapper = mapper;
         _ingestionService = ingestionService;
         _logger = logger;
     }
@@ -25,25 +28,37 @@ public class AppointmentsController : ControllerBase
     [HttpPost]
     [HttpPost("{organizationKey}")]
     public async Task<IActionResult> Post(
-        [FromBody] AppointmentMessage message,
+        [FromBody] OpenMrsAppointmentWebhook webhook,
         string? organizationKey,
         [FromHeader(Name = "X-Organization-Key")] string? organizationHeader,
         CancellationToken cancellationToken)
     {
-        if (message is null)
+        if (webhook is null)
             return BadRequest("Body is required.");
 
+        var resolvedOrg = organizationKey ?? organizationHeader ?? string.Empty;
+
         _logger.LogInformation(
-            "Received appointment {AppointmentUuid} for organization {OrganizationKey}",
-            message.AppointmentUuid,
-            organizationKey ?? organizationHeader ?? message.OrganizationKey);
+            "OpenMRS webhook {Event} for appointment {AppointmentUuid}",
+            webhook.Event,
+            webhook.AppointmentUuid);
+
+        AppointmentMessage message;
+        try
+        {
+            message = _mapper.ToAppointmentMessage(webhook, resolvedOrg);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
 
         AppointmentIngestionResult result;
         try
         {
             result = await _ingestionService.IngestAsync(
                 message,
-                organizationKey ?? organizationHeader,
+                string.IsNullOrWhiteSpace(resolvedOrg) ? null : resolvedOrg,
                 cancellationToken);
         }
         catch (ArgumentException ex)
@@ -55,14 +70,10 @@ public class AppointmentsController : ControllerBase
             return BadRequest(ex.Message);
         }
 
-        _logger.LogInformation(
-            "Saved appointment {Uuid} for organization {OrganizationKey}",
-            result.AppointmentUuid,
-            result.OrganizationKey);
-
         return Accepted(new
         {
             message = "Appointment saved.",
+            eventType = webhook.Event,
             appointmentUuid = result.AppointmentUuid,
             organizationKey = result.OrganizationKey,
             pendingNotifications = result.PendingNotificationCount,
@@ -75,4 +86,3 @@ public class AppointmentsController : ControllerBase
         });
     }
 }
-

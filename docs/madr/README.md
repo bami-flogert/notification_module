@@ -15,4 +15,5 @@ Sjabloon: [ADR-Sjabloon.md](ADR-Sjabloon.md)
 | [0007](0007-opentelemetry-logs-with-loki.md) | OpenTelemetry logs met Loki | Accepted |
 | [0008](0008-delivery-acknowledgements.md) | Bevestigingen (ACK) voor notificaties | Superseded → [0010](0010-fhir-integratie.md) |
 | [0009](0009-dead-letter-queues.md) | Dead-letter queues voor mislukte berichten | Accepted |
-| [0010](0010-fhir-integratie.md) | FHIR R4 voor afspraak-intake | Accepted |
+| [0010](0010-fhir-integratie.md) | FHIR R4 voor afspraak-intake | Superseded → [0011](0011-openmrs-omod-bridge.md) |
+| [0011](0011-openmrs-omod-bridge.md) | OpenMRS 3.0 integratie via Notification Bridge OMOD | Accepted |

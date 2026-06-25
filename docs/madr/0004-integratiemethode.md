@@ -20,6 +20,8 @@ We kiezen voor een _push-based_ integratie via webhooks.
 
 Een directe verbinding met de database zorgt voor te veel _tight coupling_, terwijl een verbinding via de API minder efficiënt kan zijn en vertraging kan veroorzaken.
 
+De push wordt uitgevoerd door een **eigen OpenMRS OMOD** (Notification Bridge), niet door wijzigingen in OpenMRS core. Zie [ADR 0011](0011-openmrs-omod-bridge.md) en [OMOD_BRIDGE.md](../openmrs/OMOD_BRIDGE.md).
+
 ## Gevolgen
 
 ### Positief

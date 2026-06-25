@@ -1,4 +1,6 @@
-# C4 Model  Communicatiemodule
+# C4 Model — Communicatiemodule
+
+Koppeling met requirements: [REQUIREMENTS_TRACEABILITY.md](../REQUIREMENTS_TRACEABILITY.md) · OpenMRS-bridge: [OMOD_BRIDGE.md](../openmrs/OMOD_BRIDGE.md)
 
 ---
 
@@ -8,9 +10,23 @@ Toont het systeem op het hoogste niveau: wie gebruikt het en met welke externe s
 
 ![c1](c1_v2.svg)
 
-**Actoren:** Patiënt (ontvangt notificaties), Beheerder (monitort dashboard), OpenMRS organisatie (levert afspraken aan).
+**Actoren:** Patiënt (ontvangt notificaties), Beheerder (monitort dashboard), OpenMRS organisatie (levert afspraken aan via OMOD-bridge).
 
-**Externe systemen:** SwiftSend, LegacyLink, AsyncFlow en SecurePost — de messaging providers die berichten afleveren.
+**Externe systemen:** OpenMRS 3.0 (met Notification Bridge OMOD), SwiftSend, LegacyLink, AsyncFlow en SecurePost.
+
+```mermaid
+flowchart TB
+    Patient[Patiënt]
+    Admin[Beheerder]
+    OpenMRS[OpenMRS_3.0]
+    CommModule[Communicatiemodule]
+    Providers[Messaging_providers]
+
+    OpenMRS -->|webhook_JSON| CommModule
+    CommModule --> Providers
+    Providers --> Patient
+    Admin --> CommModule
+```
 
 ---
 
@@ -20,13 +36,39 @@ Toont de deploybare onderdelen van het systeem en hoe ze communiceren.
 
 ![c2](c2_v2.svg)
 
-| Container                 | Verantwoordelijkheid                                                         |
-| ------------------------- | ---------------------------------------------------------------------------- |
-| Producer API              | Ontvangt afspraken via REST en plant notificaties in de database             |
-| Scheduler                 | Pollt de database en publiceert berichten naar RabbitMQ op het juiste moment |
-| Message Broker (RabbitMQ) | Verdeelt berichten via fanout exchange naar vier provider-queues             |
-| Consumer                  | Leest queues uit, verstuurt naar providers en logt het resultaat             |
-| Database (PostgreSQL)     | Slaat afspraken, notificaties, delivery-logs en versleutelde secrets op      |
+| Container | Verantwoordelijkheid |
+| --------- | -------------------- |
+| **OpenMRS 3.0 + Notification Bridge OMOD** | Vangt appointment-events op; outbox + HTTP POST naar Communicatiemodule (geen core-wijzigingen) |
+| Producer API | Ontvangt OpenMRS-webhooks (`/api/webhooks/openmrs/...`) en plant notificaties in de database |
+| Scheduler | Pollt de database en publiceert berichten naar RabbitMQ op het juiste moment |
+| Message Broker (RabbitMQ) | Verdeelt berichten via fanout exchange naar provider-queues |
+| Consumer | Leest queues uit, verstuurt naar providers en logt het resultaat |
+| Database (PostgreSQL) | Slaat afspraken, notificaties, delivery-logs en versleutelde secrets op |
+
+```mermaid
+flowchart LR
+    subgraph openmrs [OpenMRS_3.0]
+        Appt[Appointment_Scheduling]
+        OMOD[NotificationBridge_OMOD]
+        Appt --> OMOD
+    end
+
+    subgraph comm [Communicatiemodule]
+        Producer[Producer_API]
+        Sched[Scheduler]
+        RMQ[RabbitMQ]
+        Consumer[Consumer]
+        DB[(PostgreSQL)]
+        Producer --> DB
+        Sched --> DB
+        Sched --> RMQ
+        RMQ --> Consumer
+    end
+
+    OMOD -->|POST_webhook| Producer
+```
+
+**Requirement-koppeling:** R1 (geen OpenMRS core-patch) → OMOD-container; R2 (push) → webhook-pijl; R3 (resiliency) → outbox in OMOD + retries in Producer/Consumer.
 
 ---
 
@@ -38,7 +80,8 @@ Toont de belangrijkste **code-componenten** binnen de Producer- en Consumer-cont
 
 | Component | Container | Verantwoordelijkheid |
 | --------- | --------- | -------------------- |
-| `FhirAppointmentController` | Producer | Ontvangt FHIR `Appointment` POST, valideert encoding en payload, mapt naar intern model |
+| `OpenMrsWebhookController` | Producer | Ontvangt OMOD JSON-webhook, mapt naar intern model |
+| `OpenMrsWebhookMapper` | Producer | Vertaalt `event`/`status`/velden naar `AppointmentMessage` |
 | `AppointmentIngestionService` | Producer | Upsert `appointments`, plant of annuleert `scheduled_notifications` |
 | `NotificationSchedulerWorker` | Producer | Pollt due rijen, claimt `Pending → Publishing`, roept publisher aan |
 | `RabbitMqPublisher` | Producer | Serialiseert `AppointmentMessage` en publiceert naar RabbitMQ exchange |
@@ -61,21 +104,22 @@ Volledige keten van afspraak-intake tot delivery-log, inclusief alternatieve pad
 
 ![process flow](process_flow.svg)
 
-### Happy path
+### Happy path (OpenMRS OMOD — primair)
 
-1. **OpenMRS** — POST FHIR `Appointment`
-2. **FhirAppointmentController** — validate + map
-3. **AppointmentIngestionService** — upsert `appointments`, create `scheduled_notifications` (`Pending`)
-4. **PostgreSQL** — persist
-5. **NotificationSchedulerWorker** — claim due rows (`Pending → Publishing → Queued`)
-6. **RabbitMqPublisher → RabbitMQ** — publish `AppointmentMessage`
-7. **NotificationWorker** — consume from provider queue
-8. **NotificationDispatcher + provider adapter** — HTTP naar messaging provider (max 3 pogingen)
-9. **DeliveryTrackingService** — write `notification_deliveries` + `billing_delivery_events`
+1. **OpenMRS** — appointment create/update → Notification Bridge OMOD
+2. **OMOD** — outbox + POST JSON naar `OpenMrsWebhookController`
+3. **OpenMrsWebhookMapper** — map naar `AppointmentMessage`
+4. **AppointmentIngestionService** — upsert `appointments`, create `scheduled_notifications` (`Pending`)
+5. **PostgreSQL** — persist
+6. **NotificationSchedulerWorker** — claim due rows (`Pending → Publishing → Queued`)
+7. **RabbitMqPublisher → RabbitMQ** — publish `AppointmentMessage`
+8. **NotificationWorker** — consume from provider queue
+9. **NotificationDispatcher + provider adapter** — HTTP naar messaging provider
+10. **DeliveryTrackingService** — write `notification_deliveries` + `billing_delivery_events`
 
 Bij provider-fout: **fallback republish** naar de volgende provider in de organisatieketen (zie [`RELIABILITY.md`](../RELIABILITY.md)).
 
-### Alternatieve paden (vanaf stap 3)
+### Alternatieve paden (vanaf stap 4)
 
 | Trigger | Gedrag |
 | ------- | ------ |

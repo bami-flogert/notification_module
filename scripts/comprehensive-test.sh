@@ -82,35 +82,26 @@ curl -sf http://127.0.0.1:8889/metrics >/dev/null && pass I4b "otel metrics" || 
 wait_http http://127.0.0.1:9090/-/ready 200 && pass I5 "prometheus ready" || fail I5 "prometheus ready"
 
 echo "==> Health H1-H4"
-wait_http "$PRODUCER_BASE/fhir/metadata" 200
+wait_http "$PRODUCER_BASE/health" 200
 for pair in "H1:$PRODUCER_BASE/health" "H2:$PRODUCER_BASE/ready" "H3:$CONSUMER_BASE/health" "H4:$CONSUMER_BASE/ready"; do
   id="${pair%%:*}"; url="${pair#*:}"
   wait_http "$url" 200 && pass "$id" "$url Healthy" || fail "$id" "$url"
 done
 
 echo "==> Endpoints & auth"
-meta="$(curl -s -H 'Accept: application/fhir+json' "$PRODUCER_BASE/fhir/metadata")"
-echo "$meta" | grep -qi CapabilityStatement && pass E1 "metadata" || fail E1 "metadata"
-
-auth1="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$PRODUCER_BASE/api/appointments/default" -H 'Content-Type: application/json' -d '{}')"
+auth1="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$PRODUCER_BASE/api/webhooks/openmrs/appointments/default" -H 'Content-Type: application/json' -d '{}')"
 [[ "$auth1" == "401" ]] && pass AUTH1 "no key => 401" || fail AUTH1 "no key => $auth1"
 
-auth2="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$PRODUCER_BASE/api/appointments/default" -H 'Content-Type: application/json' -H 'X-Api-Key: wrong' -d '{}')"
+auth2="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$PRODUCER_BASE/api/webhooks/openmrs/appointments/default" -H 'Content-Type: application/json' -H 'X-Api-Key: wrong' -d '{}')"
 [[ "$auth2" == "401" ]] && pass AUTH2 "wrong key => 401" || fail AUTH2 "wrong key => $auth2"
 
-START_FAR="$(date -u -d '+3 days' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -v+3d '+%Y-%m-%dT%H:%M:%SZ')"
 START_SOON="$(date -u -d '+70 minutes' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -v+70M '+%Y-%m-%dT%H:%M:%SZ')"
 UUID="comprehensive-$(date +%s)"
 
-fhir_code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$PRODUCER_BASE/fhir/Appointment/default" \
-  -H "X-Api-Key: $API_KEY" -H 'Content-Type: application/fhir+json' -H 'Accept: application/fhir+json' \
-  -d "{\"resourceType\":\"Appointment\",\"status\":\"booked\",\"start\":\"$START_SOON\",\"identifier\":[{\"system\":\"http://openmrs.org/appointment\",\"value\":\"$UUID\"}],\"participant\":[{\"actor\":{\"reference\":\"Patient/p1\",\"display\":\"Test\"},\"status\":\"accepted\"}],\"extension\":[{\"url\":\"http://notification-module.local/StructureDefinition/patient-phone\",\"valueString\":\"+31612345678\"},{\"url\":\"http://notification-module.local/StructureDefinition/patient-email\",\"valueString\":\"t@example.com\"},{\"url\":\"http://notification-module.local/StructureDefinition/location-text\",\"valueString\":\"Loc\"}]}")"
-[[ "$fhir_code" == "201" || "$fhir_code" == "200" ]] && pass E3 "FHIR POST $fhir_code" || fail E3 "FHIR POST $fhir_code"
-
-legacy="$(curl -s -w '\n%{http_code}' -X POST "$PRODUCER_BASE/api/appointments/default" -H "X-Api-Key: $API_KEY" -H 'Content-Type: application/json' \
-  -d "{\"appointmentUuid\":\"legacy-$UUID\",\"organizationKey\":\"default\",\"patientUuid\":\"p1\",\"patientName\":\"L\",\"patientPhone\":\"+31610000001\",\"patientEmail\":\"l@e.com\",\"startDateTime\":\"$START_FAR\",\"status\":\"Confirmed\",\"location\":\"L\",\"instructions\":\"I\"}")"
-legacy_code="${legacy##*$'\n'}"
-[[ "$legacy_code" == "202" ]] && pass E13 "legacy $legacy_code" || fail E13 "legacy $legacy_code"
+webhook_code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$PRODUCER_BASE/api/webhooks/openmrs/appointments/default" \
+  -H "X-Api-Key: $API_KEY" -H 'Content-Type: application/json' \
+  -d "{\"event\":\"CREATED\",\"appointmentUuid\":\"$UUID\",\"status\":\"Scheduled\",\"startDateTime\":\"$START_SOON\",\"patientUuid\":\"p1\",\"patientName\":\"Test\",\"patientPhone\":\"+31612345678\",\"patientEmail\":\"t@example.com\",\"location\":\"Loc\",\"comments\":\"Test\"}")"
+[[ "$webhook_code" == "202" ]] && pass E3 "webhook POST $webhook_code" || fail E3 "webhook POST $webhook_code"
 
 c404="$(http_code "$CONSUMER_BASE/api/appointments")"
 [[ "$c404" == "404" ]] && pass E17 "consumer 404" || fail E17 "consumer $c404"
