@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using NotificationModule.Shared.Models;
 using NotificationModule.Shared.Persistence;
 
@@ -82,6 +83,7 @@ public sealed class OpenMrsWebhookApiTests : IClassFixture<ProducerWebApplicatio
     }
 
     [Fact]
+    public async Task Post_openmrs_webhook_cancelled_clears_pending_reminders()
     {
         var client = _factory.CreateAuthenticatedClient();
         var uuid = Guid.NewGuid().ToString();

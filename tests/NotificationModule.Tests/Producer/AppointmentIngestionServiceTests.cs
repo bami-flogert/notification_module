@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using NotificationModule.Producer.Services;
+using NotificationModule.Shared;
 using NotificationModule.Shared.Models;
 using NotificationModule.Shared.Persistence;
 
@@ -225,13 +226,27 @@ public sealed class AppointmentIngestionServiceTests
             TestDb.CreateConfiguration(),
             NullLogger<AppointmentIngestionService>.Instance);
 
-        // 14:30 local Amsterdam time (UTC+2 in summer) = 12:30 UTC
-        var localStart = new DateTime(2026, 6, 1, 14, 30, 0); // Kind = Unspecified
+        Assert.True(
+            OrganizationTimeZone.TryGetTimeZoneInfo("Europe/Amsterdam", out var amsterdamTz),
+            "Europe/Amsterdam must be available on this platform.");
+
+        // Use a future local wall-clock time so new-appointment validation passes regardless of run date.
+        var amsterdamNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, amsterdamTz);
+        var localStart = new DateTime(
+            amsterdamNow.Year,
+            amsterdamNow.Month,
+            amsterdamNow.Day,
+            14,
+            30,
+            0,
+            DateTimeKind.Unspecified).AddDays(30);
+
         var message = CreateMessage(localStart) with { OrganizationKey = "amsterdam-org" };
 
         var result = await service.IngestAsync(message, "amsterdam-org", CancellationToken.None);
 
-        var expected24hSendAt = new DateTimeOffset(2026, 5, 31, 12, 30, 0, TimeSpan.Zero);
+        var expectedStartUtc = OrganizationTimeZone.ConvertUnspecifiedLocalToUtc(localStart, amsterdamTz);
+        var expected24hSendAt = expectedStartUtc.Subtract(TimeSpan.FromHours(24));
         var reminder24h = result.ScheduledReminders.Single(r => r.ReminderType == "24h");
         Assert.Equal(expected24hSendAt, reminder24h.ScheduledSendAt);
     }
