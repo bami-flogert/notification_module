@@ -1,0 +1,25 @@
+@startuml
+' C1 - Context diagram (C4-PlantUML). Render: zie docs/c4/README.md
+!include <C4/C4_Context>
+
+title C1 - Context diagram: Communicatiemodule
+
+Person(patient, "Patiënt", "Ontvangt afspraakherinneringen op de telefoon")
+Person(beheerder, "Beheerder", "Monitort en beheert de module")
+System_Ext(openmrs, "OpenMRS organisatie", "Ziekenhuis / kliniek; levert afspraken aan")
+
+System(module, "Communicatiemodule", "SaaS-notificatiesysteem dat afspraakherinneringen verstuurt")
+
+System_Ext(swiftsend, "SwiftSend", "Messaging provider")
+System_Ext(legacylink, "LegacyLink", "Messaging provider")
+System_Ext(asyncflow, "AsyncFlow", "Messaging provider")
+System_Ext(securepost, "SecurePost", "Messaging provider")
+
+Rel(openmrs, module, "Levert afspraken", "HTTPS / FHIR")
+Rel(beheerder, module, "Beheert en bekijkt reports", "HTTPS")
+Rel(module, patient, "Stuurt notificaties", "SMS")
+Rel(module, swiftsend, "Verstuurt berichten", "HTTPS / JSON")
+Rel(module, legacylink, "Verstuurt berichten", "HTTPS / XML")
+Rel(module, asyncflow, "Verstuurt berichten", "HTTPS / JSON")
+Rel(module, securepost, "Verstuurt berichten", "HTTPS / JSON")
+@enduml
