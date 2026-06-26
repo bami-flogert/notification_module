@@ -1,0 +1,25 @@
+@startuml
+' C2 - Container diagram (C4-PlantUML). Render: zie docs/c4/README.md
+!include <C4/C4_Container>
+
+title C2 - Container diagram: Communicatiemodule
+
+Person(beheerder, "Beheerder", "Monitort en beheert")
+System_Ext(openmrs, "OpenMRS organisatie", "Levert afspraken aan")
+System_Ext(providers, "Messaging providers", "SwiftSend, LegacyLink, AsyncFlow, SecurePost")
+
+System_Boundary(module, "Communicatiemodule") {
+  Container(producer, "Producer API", "ASP.NET Core", "Ontvangt FHIR-afspraken; bevat de scheduler-worker die due reminders publiceert")
+  ContainerQueue(broker, "Message Broker", "RabbitMQ", "Direct exchange; 4 provider-queues + DLQ")
+  Container(consumer, "Consumer", ".NET Worker Service", "Leest queues, verstuurt naar providers, logt resultaat")
+  ContainerDb(db, "Database", "PostgreSQL", "Afspraken, scheduled_notifications, deliveries, versleutelde secrets")
+}
+
+Rel(openmrs, producer, "Levert afspraken", "HTTPS / FHIR")
+Rel(beheerder, producer, "Reports + beheer", "HTTPS")
+Rel(producer, broker, "Publiceert notificaties", "AMQP")
+Rel(broker, consumer, "Levert berichten", "AMQP")
+Rel(producer, db, "Leest / schrijft afspraken", "SQL")
+Rel(consumer, db, "Schrijft delivery-logs", "SQL")
+Rel(consumer, providers, "Verstuurt SMS", "HTTPS")
+@enduml

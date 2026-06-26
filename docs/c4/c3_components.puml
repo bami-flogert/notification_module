@@ -1,0 +1,53 @@
+@startuml
+' C3 - Component diagram (C4-PlantUML). Render: zie docs/c4/README.md
+!include <C4/C4_Component>
+
+title C3 - Component diagram: Producer & Consumer
+
+System_Ext(openmrs, "OpenMRS organisatie", "FHIR client")
+System_Ext(providers, "Messaging providers", "SwiftSend, LegacyLink, AsyncFlow, SecurePost")
+ContainerQueue(broker, "Message Broker", "RabbitMQ", "Direct exchange + DLQ")
+ContainerDb(db, "Database", "PostgreSQL", "appointments, scheduled_notifications, deliveries, secrets")
+
+Container_Boundary(producer, "Producer (NotificationModule.Producer)") {
+  Component(ctrl, "FhirAppointmentController", "ASP.NET Core", "FHIR POST /fhir/Appointment; valideert + mapt")
+  Component(ingest, "AppointmentIngestionService", "C#", "Upsert afspraken; plant/annuleert scheduled_notifications")
+  Component(sched, "NotificationSchedulerWorker", "BackgroundService", "Pollt due rijen; claimt Pending -> Publishing")
+  Component(pub, "RabbitMqPublisher", "C#", "Serialiseert + publiceert AppointmentMessage")
+}
+
+Container_Boundary(consumer, "Consumer (NotificationModule.Consumer)") {
+  Component(worker, "NotificationWorker", "BackgroundService", "Consumeert queues; orkestreert dispatch")
+  Component(disp, "NotificationDispatcher", "C#", "Routeert naar de juiste provider-adapter")
+  Component(swift, "SwiftSendProvider", "C#", "JSON REST")
+  Component(legacy, "LegacyLinkProvider", "C#", "XML + Basic auth")
+  Component(secure, "SecurePostProvider", "C#", "OAuth + JSON")
+  Component(async, "AsyncFlowProvider", "C#", "Async JSON")
+  Component(secrets, "ProviderSecretsStore", "C#", "Decrypt provider_secrets")
+  Component(track, "DeliveryTrackingService", "C#", "Schrijft deliveries + billing events")
+}
+
+Rel(openmrs, ctrl, "Verstuurt afspraak", "HTTPS / FHIR")
+Rel(ctrl, ingest, "Roept aan")
+Rel(ingest, db, "Schrijft afspraken + reminders", "SQL")
+Rel(sched, db, "Claimt due reminders", "SQL")
+Rel(sched, pub, "Roept aan")
+Rel(pub, broker, "Publiceert", "AMQP")
+Rel(broker, worker, "Levert bericht", "AMQP")
+Rel(worker, disp, "Roept aan")
+Rel(disp, swift, "Dispatch")
+Rel(disp, legacy, "Dispatch")
+Rel(disp, secure, "Dispatch")
+Rel(disp, async, "Dispatch")
+Rel(swift, providers, "Verstuurt SMS", "HTTPS")
+Rel(legacy, providers, "Verstuurt SMS", "HTTPS")
+Rel(secure, providers, "Verstuurt SMS", "HTTPS")
+Rel(async, providers, "Verstuurt SMS", "HTTPS")
+Rel(worker, track, "Logt resultaat")
+Rel(track, db, "Schrijft deliveries", "SQL")
+Rel(swift, secrets, "Haalt credentials")
+Rel(legacy, secrets, "Haalt credentials")
+Rel(secure, secrets, "Haalt credentials")
+Rel(async, secrets, "Haalt credentials")
+Rel(secrets, db, "Leest secrets", "SQL")
+@enduml
